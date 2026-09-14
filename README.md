@@ -1,4 +1,4 @@
-# claude-usage
+# Claude usage for humans
 
 One verdict for your Claude subscription: **use more**, **on track**,
 **slow down**, **running out**, or **wait**.
@@ -10,7 +10,7 @@ nested in a 7-day window, per model, every time you wonder whether to send the
 next prompt, is exactly the kind of thing nobody does. So people either hit the
 wall mid-task, or they get cautious and leave a third of a paid plan unused.
 
-`claude-usage` does the arithmetic and gives you the answer.
+`cuh` (Claude usage for humans) does the arithmetic and gives you the answer.
 
 ## How it is put together
 
@@ -19,14 +19,14 @@ wall mid-task, or they get cautious and leave a third of a paid plan unused.
              ▲  one request every 5 minutes
              │
    ┌─────────┴──────────┐        /now (JSON)        ┌──────────────────────┐
-   │  claude-usage serve │ ◄──────────────────────── │ web dashboard (built  │
+   │  cuh serve │ ◄──────────────────────── │ web dashboard (built  │
    │  in a container     │                           │ into the server)      │
    │  keeps history      │ ◄──────────────────────── │ terminal client       │
    └────────────────────┘                           │ status line, popup    │
                                                     └──────────────────────┘
 ```
 
-- **The server** (`claude-usage serve`) is the only thing that talks to
+- **The server** (`cuh serve`) is the only thing that talks to
   Anthropic. It samples every 5 minutes, keeps every sample forever as monthly
   JSONL files, measures your pace from that history, computes the verdict, and
   serves it all on `/now`. It runs anywhere Docker runs.
@@ -40,7 +40,7 @@ Prerequisites: Docker with Compose, and Claude Code logged in on this machine
 (the server borrows its login).
 
 ```sh
-cp .env.example .env          # set CLAUDE_USAGE_SECRET and CLAUDE_USAGE_CREDENTIALS
+cp .env.example .env          # set CUH_SECRET and CUH_CREDENTIALS
 make up                       # build the image, start the container
 open http://localhost:8787/   # the dashboard; enter the secret once
 ```
@@ -52,17 +52,17 @@ already runs the container unconfined so the bind mounts work.
 Point the terminal client at it and it stays in sync with the dashboard:
 
 ```sh
-make install                                                    # ~/.local/bin/claude-usage
-claude-usage config remote http://localhost:8787 --secret <the secret in .env>
-claude-usage            # the panel
-claude-usage -s         # one line, for status lines
-claude-usage --watch    # live, q quits
+make install                                                    # ~/.local/bin/cuh
+cuh config remote http://localhost:8787 --secret <the secret in .env>
+cuh            # the panel
+cuh -s         # one line, for status lines
+cuh --watch    # live, q quits
 ```
 
 For Claude Code's status line, in `~/.claude/settings.json`:
 
 ```json
-{ "statusLine": { "type": "command", "command": "claude-usage -s" } }
+{ "statusLine": { "type": "command", "command": "cuh -s" } }
 ```
 
 Run `make up` as yourself, not with `sudo`: the container runs under your user
@@ -82,7 +82,7 @@ into its own directory, and give that file to the server:
 
 ```sh
 CLAUDE_CONFIG_DIR=~/claude-server-login claude     # then /login inside it
-scp ~/claude-server-login/.credentials.json server:/srv/claude-usage/credentials.json
+scp ~/claude-server-login/.credentials.json server:/srv/cuh/credentials.json
 ```
 
 Anthropic treats it as another device. The server renews the token itself
@@ -93,12 +93,12 @@ again on the server. Repeat the two commands above to resume.
 **2. Files on the server.**
 
 ```sh
-git clone <this repo> /srv/claude-usage && cd /srv/claude-usage
+git clone <this repo> /srv/cuh && cd /srv/cuh
 cp .env.example .env
 ```
 
-In `.env` set a long random `CLAUDE_USAGE_SECRET`, and
-`CLAUDE_USAGE_CREDENTIALS=/srv/claude-usage/credentials.json`.
+In `.env` set a long random `CUH_SECRET`, and
+`CUH_CREDENTIALS=/srv/cuh/credentials.json`.
 
 **3. Start it.**
 
@@ -115,7 +115,7 @@ rebuilds; back it up if you care about it.
 **4. Point your devices at it.** On each laptop:
 
 ```sh
-claude-usage config remote http://server:8787 --secret <the secret>
+cuh config remote http://server:8787 --secret <the secret>
 ```
 
 and open `http://server:8787/` in a browser. The dashboard asks for the secret
@@ -151,10 +151,10 @@ Cowork), and extra-usage spend. About 250 bytes each, under 200 KB a month.
 Nothing is deleted. The server keeps 90 days in memory for pace computation
 and reads older months from disk only when asked.
 
-Client-side files (`claude-usage --paths` prints them): `config.json` with the
+Client-side files (`cuh --paths` prints them): `config.json` with the
 server address and secret, `remote.json` with the last server answer (shown as
 stale if the server stops answering), and a small local cache used only when
-no server is configured. `claude-usage --reset` clears them.
+no server is configured. `cuh --reset` clears them.
 
 ## Endpoints
 

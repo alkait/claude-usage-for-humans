@@ -11,7 +11,7 @@ import (
 
 // Config is the client's optional settings file.
 type Config struct {
-	Remote string `json:"remote,omitempty"` // base URL of a claude-usage server
+	Remote string `json:"remote,omitempty"` // base URL of a cuh server
 	Secret string `json:"secret,omitempty"` // its shared secret
 }
 
@@ -21,7 +21,7 @@ func configPath() string {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "claude-usage", "config.json")
+	return filepath.Join(base, "cuh", "config.json")
 }
 
 // loadConfig reads the file, then lets environment variables override it.
@@ -30,10 +30,10 @@ func loadConfig() Config {
 	if raw, err := os.ReadFile(configPath()); err == nil {
 		json.Unmarshal(raw, &c)
 	}
-	if v := os.Getenv("CLAUDE_USAGE_REMOTE"); v != "" {
+	if v := os.Getenv("CUH_REMOTE"); v != "" {
 		c.Remote = v
 	}
-	if v := os.Getenv("CLAUDE_USAGE_SECRET"); v != "" {
+	if v := os.Getenv("CUH_SECRET"); v != "" {
 		c.Secret = v
 	}
 	return c
@@ -48,7 +48,7 @@ func saveConfig(c Config) error {
 	return os.WriteFile(path, append(raw, '\n'), 0o600)
 }
 
-// runConfig implements `claude-usage config ...`.
+// runConfig implements `cuh config ...`.
 func runConfig(args []string) {
 	if len(args) == 0 {
 		args = []string{"show"}
@@ -72,7 +72,7 @@ func runConfig(args []string) {
 			url = fs.Arg(0)
 		}
 		if url == "" {
-			fatal(fmt.Errorf("usage: claude-usage config remote http://host:8787 [--secret S]"))
+			fatal(fmt.Errorf("usage: cuh config remote http://host:8787 [--secret S]"))
 		}
 		c := loadConfig()
 		c.Remote = url

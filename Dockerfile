@@ -4,10 +4,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /claude-usage .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /cuh .
 
 FROM gcr.io/distroless/static-debian12
-COPY --from=build /claude-usage /claude-usage
+COPY --from=build /cuh /cuh
 VOLUME ["/data"]
 EXPOSE 8787
-ENTRYPOINT ["/claude-usage", "serve", "--listen", ":8787", "--data-dir", "/data", "--credentials", "/secrets/credentials.json"]
+ENTRYPOINT ["/cuh", "serve", "--listen", ":8787", "--data-dir", "/data", "--credentials", "/secrets/credentials.json"]

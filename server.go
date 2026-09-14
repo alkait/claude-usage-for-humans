@@ -57,11 +57,11 @@ func envOr(key, def string) string {
 func runServe(args []string) {
 	var o serveOptions
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	fs.StringVar(&o.listen, "listen", envOr("CLAUDE_USAGE_LISTEN", ":8787"), "address to listen on")
-	fs.StringVar(&o.dataDir, "data-dir", envOr("CLAUDE_USAGE_DATA", "./data"), "where history files live")
-	fs.StringVar(&o.credentials, "credentials", envOr("CLAUDE_USAGE_CREDENTIALS", credentialsPath()), "Claude Code credentials file (refreshed in place)")
-	fs.StringVar(&o.secret, "secret", os.Getenv("CLAUDE_USAGE_SECRET"), "shared secret clients must send; empty means open")
-	interval := fs.String("interval", envOr("CLAUDE_USAGE_INTERVAL", "5m"), "sampling interval")
+	fs.StringVar(&o.listen, "listen", envOr("CUH_LISTEN", ":8787"), "address to listen on")
+	fs.StringVar(&o.dataDir, "data-dir", envOr("CUH_DATA", "./data"), "where history files live")
+	fs.StringVar(&o.credentials, "credentials", envOr("CUH_CREDENTIALS", credentialsPath()), "Claude Code credentials file (refreshed in place)")
+	fs.StringVar(&o.secret, "secret", os.Getenv("CUH_SECRET"), "shared secret clients must send; empty means open")
+	interval := fs.String("interval", envOr("CUH_INTERVAL", "5m"), "sampling interval")
 	fs.Parse(args)
 	d, err := time.ParseDuration(*interval)
 	if err != nil || d < time.Minute {
@@ -75,7 +75,7 @@ func runServe(args []string) {
 	if err := s.loadHistory(time.Now()); err != nil {
 		fatal(err)
 	}
-	log.Printf("claude-usage %s serving on %s, sampling every %s, %d samples on disk in %s", version, o.listen, o.interval, s.total, o.dataDir)
+	log.Printf("cuh %s serving on %s, sampling every %s, %d samples on disk in %s", version, o.listen, o.interval, s.total, o.dataDir)
 	if o.secret == "" {
 		log.Printf("warning: no secret set, anyone who can reach this port can read your usage")
 	}

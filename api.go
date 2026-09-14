@@ -175,7 +175,7 @@ func fetchUsage(token string) (*Usage, json.RawMessage, error) {
 	req, _ := http.NewRequest("GET", usageURL, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
-	req.Header.Set("User-Agent", "claude-usage/"+version)
+	req.Header.Set("User-Agent", "cuh/"+version)
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

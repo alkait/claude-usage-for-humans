@@ -66,7 +66,7 @@ func TestServerSamplesAndServesNow(t *testing.T) {
 	}
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<title>Claude usage</title>") {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<title>Claude usage for humans</title>") {
 		t.Fatalf("/ should serve the page without auth: %d", rec.Code)
 	}
 	ri := res.Rates["session"]

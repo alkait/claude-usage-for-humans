@@ -1,9 +1,9 @@
-BIN     := claude-usage
+BIN     := cuh
 GO      ?= go
 DOCKER  ?= docker
 COMPOSE ?= $(shell $(DOCKER) compose version >/dev/null 2>&1 && echo "$(DOCKER) compose" || echo docker-compose)
-PORT    ?= $(shell sed -n 's/^CLAUDE_USAGE_PORT=//p' .env 2>/dev/null)
-SECRET  ?= $(shell sed -n 's/^CLAUDE_USAGE_SECRET=//p' .env 2>/dev/null)
+PORT    ?= $(shell sed -n 's/^CUH_PORT=//p' .env 2>/dev/null)
+SECRET  ?= $(shell sed -n 's/^CUH_SECRET=//p' .env 2>/dev/null)
 export UID := $(shell id -u)
 export GID := $(shell id -g)
 
@@ -22,7 +22,7 @@ install: build    ## copy the binary to ~/.local/bin
 	install -m 0755 $(BIN) $(HOME)/.local/bin/$(BIN)
 
 image:            ## container image
-	$(DOCKER) build -t claude-usage:local .
+	$(DOCKER) build -t cuh:local .
 
 up:               ## build and start the server in a container
 	@test -f .env || { echo "copy .env.example to .env first"; exit 1; }

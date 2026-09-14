@@ -1,6 +1,6 @@
 dist/
 data/
-claude-usage
-claude-usage.exe
+cuh
+cuh.exe
 .env
 .git/

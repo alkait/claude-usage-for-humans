@@ -1,4 +1,4 @@
-module github.com/alkait/claude-usage
+module github.com/alkait/claude-usage-for-humans
 
 go 1.27
 

@@ -68,7 +68,7 @@ func refreshIfNeeded(path string, force bool, now time.Time) (Creds, bool, error
 	})
 	req, _ := http.NewRequest("POST", oauthTokenURL, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "claude-usage/"+version)
+	req.Header.Set("User-Agent", "cuh/"+version)
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
 		return c, false, fmt.Errorf("token refresh: %v", err)

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// NowResponse is what a claude-usage server returns from /now: the current
+// NowResponse is what a cuh server returns from /now: the current
 // usage plus the rates it has already measured from its history.
 type NowResponse struct {
 	FetchedAt time.Time           `json:"fetched_at"`

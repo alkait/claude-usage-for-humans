@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>Claude usage</title>
+<title>Claude usage for humans</title>
 <script>
   // apply the remembered theme before first paint so there is no flash
   (() => {
-    let t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('claude-usage-theme') || 'system';
+    let t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('cuh-theme') || 'system';
     if (!['system', 'light', 'dark'].includes(t)) t = 'system';
     const r = document.documentElement;
     if (t === 'light' || t === 'dark') r.dataset.theme = t;
@@ -122,7 +122,7 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="brand"><span class="star">✱</span><span>Claude usage</span><span class="pill" id="plan" hidden></span></div>
+    <div class="brand"><span class="star">✱</span><span>Claude usage <span style="color:var(--ink-3);font-weight:500">for humans</span></span><span class="pill" id="plan" hidden></span></div>
     <div class="right">
       <span id="stamp">connecting</span>
       <button class="theme" id="themeBtn" type="button" data-mode="system" title="Theme: system" aria-label="Theme: system">
@@ -166,7 +166,7 @@
   const EMOJI = { use_more: '🟢', on_track: '🔵', slow_down: '🟡', running_out: '🔴', wait: '⏳', no_pace_yet: '⚪', unknown: '❓' };
   const WORD = { use_more: 'Use more', on_track: 'On track', slow_down: 'Slow down', running_out: 'Running out',
     wait: 'Wait', no_pace_yet: 'No pace yet', unknown: 'No data' };
-  let secret = localStorage.getItem('claude-usage-secret') || '';
+  let secret = localStorage.getItem('cuh-secret') || '';
   let last = null, lastAt = 0;
 
   const dur = (s) => {
@@ -337,7 +337,7 @@
     } finally { document.body.classList.remove('loading'); }
   }
 
-  $('go').onclick = () => { secret = $('secret').value.trim(); localStorage.setItem('claude-usage-secret', secret); load(); };
+  $('go').onclick = () => { secret = $('secret').value.trim(); localStorage.setItem('cuh-secret', secret); load(); };
   $('secret').onkeydown = (e) => { if (e.key === 'Enter') $('go').onclick(); };
   // ---- theme: system / light / dark, remembered; ?theme= overrides for app windows ----
   const mq = matchMedia('(prefers-color-scheme: light)');
@@ -348,12 +348,12 @@
     const btn = $('themeBtn');
     btn.dataset.mode = t; btn.title = 'Theme: ' + t + ' (click to change)'; btn.setAttribute('aria-label', btn.title);
   }
-  let theme = new URLSearchParams(location.search).get('theme') || localStorage.getItem('claude-usage-theme') || 'system';
+  let theme = new URLSearchParams(location.search).get('theme') || localStorage.getItem('cuh-theme') || 'system';
   if (!['system', 'light', 'dark'].includes(theme)) theme = 'system';
   applyTheme(theme);
   mq.addEventListener('change', () => applyTheme(theme));
   const order = ['system', 'light', 'dark'];
-  $('themeBtn').onclick = () => { theme = order[(order.indexOf(theme) + 1) % order.length]; localStorage.setItem('claude-usage-theme', theme); applyTheme(theme); };
+  $('themeBtn').onclick = () => { theme = order[(order.indexOf(theme) + 1) % order.length]; localStorage.setItem('cuh-theme', theme); applyTheme(theme); };
   load();
   setInterval(load, 30000);
   setInterval(() => { if (last) stamp(last); }, 10000);

@@ -44,7 +44,7 @@ func main() {
 	}
 	cfg := loadConfig()
 	var o options
-	flag.StringVar(&o.remote, "remote", cfg.Remote, "read from a claude-usage server instead of Anthropic")
+	flag.StringVar(&o.remote, "remote", cfg.Remote, "read from a cuh server instead of Anthropic")
 	flag.StringVar(&o.secret, "secret", cfg.Secret, "shared secret for --remote")
 	flag.BoolVar(&o.short, "s", false, "one line, for status lines and prompts")
 	flag.BoolVar(&o.short, "short", false, "one line, for status lines and prompts")
@@ -62,7 +62,7 @@ func main() {
 	flag.Parse()
 
 	if o.showVersion {
-		fmt.Println("claude-usage", version)
+		fmt.Println("cuh", version)
 		return
 	}
 	store, err := openStore()
@@ -93,21 +93,21 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `claude-usage %s - one verdict for your Claude subscription: use more, on track, slow down, or running out.
+	fmt.Fprintf(os.Stderr, `cuh %s - one verdict for your Claude subscription: use more, on track, slow down, or running out.
 
-usage: claude-usage [flags]
-       claude-usage serve  [--listen :8787 --data-dir ./data --interval 5m --secret S --credentials FILE]
-       claude-usage config show | remote URL [--secret S] | clear
-       claude-usage auth refresh [--force]
+usage: cuh [flags]
+       cuh serve  [--listen :8787 --data-dir ./data --interval 5m --secret S --credentials FILE]
+       cuh config show | remote URL [--secret S] | clear
+       cuh auth refresh [--force]
 
 `, version)
 	flag.PrintDefaults()
 }
 
-// runAuth implements `claude-usage auth refresh`.
+// runAuth implements `cuh auth refresh`.
 func runAuth(args []string) {
 	if len(args) == 0 || args[0] != "refresh" {
-		fatal(errors.New("usage: claude-usage auth refresh [--force] [--credentials FILE]"))
+		fatal(errors.New("usage: cuh auth refresh [--force] [--credentials FILE]"))
 	}
 	fs := flag.NewFlagSet("auth refresh", flag.ExitOnError)
 	force := fs.Bool("force", false, "refresh even if the token is not close to expiry")
@@ -146,7 +146,7 @@ func noteFetchError(st *State, err error, now time.Time) {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "claude-usage:", err)
+	fmt.Fprintln(os.Stderr, "cuh:", err)
 	os.Exit(1)
 }
 

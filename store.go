@@ -85,7 +85,7 @@ func openStore() (*Store, error) {
 		}
 		base = filepath.Join(home, ".cache")
 	}
-	dir := filepath.Join(base, "claude-usage")
+	dir := filepath.Join(base, "cuh")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (s *Store) TryLock(now time.Time) (func(), error) {
 		}
 		break
 	}
-	return nil, errors.New("another claude-usage process is fetching")
+	return nil, errors.New("another cuh process is fetching")
 }
 
 // Reset deletes everything we own.
