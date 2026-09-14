@@ -29,7 +29,16 @@ type NowResponse struct {
 		Samples int       `json:"samples"`
 		Since   time.Time `json:"since"`
 	} `json:"history"`
-	Server string `json:"server"`
+	Recording Recording `json:"recording"`
+	Server    string    `json:"server"`
+}
+
+// Recording says whether the server is still able to sample, and if not, why.
+type Recording struct {
+	Active     bool      `json:"active"`
+	StoppedAt  time.Time `json:"stopped_at,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+	LastSample time.Time `json:"last_sample,omitempty"`
 }
 
 // fetchNow asks a server for /now.

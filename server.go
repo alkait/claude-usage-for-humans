@@ -37,12 +37,14 @@ type serveOptions struct {
 // Server samples Anthropic on a schedule, keeps every sample on disk, and
 // answers /now with the rates a client needs for its verdict.
 type Server struct {
-	opt   serveOptions
-	mu    sync.RWMutex
-	st    State
-	hist  []Sample // recent samples, oldest first
-	since time.Time
-	total int
+	opt     serveOptions
+	mu      sync.RWMutex
+	st      State
+	hist    []Sample // recent samples, oldest first
+	since   time.Time
+	total   int
+	stopped time.Time // when recording stopped because the login died; zero while healthy
+	reason  string
 }
 
 func envOr(key, def string) string {
@@ -102,7 +104,13 @@ func (s *Server) sampleOnce(now time.Time) {
 	}
 	creds, refreshed, err := refreshIfNeeded(s.opt.credentials, false, now)
 	if err != nil {
-		if creds.AccessToken == "" || time.UnixMilli(creds.ExpiresAt).Before(now) {
+		var ae *AuthError
+		expired := creds.AccessToken == "" || time.UnixMilli(creds.ExpiresAt).Before(now)
+		if errors.As(err, &ae) && expired {
+			s.stop(now, ae.Reason+". Log in again on the server to resume.")
+			return
+		}
+		if expired {
 			s.setError(err.Error(), now.Add(time.Minute))
 			log.Printf("credentials: %v", err)
 			return
@@ -113,6 +121,11 @@ func (s *Server) sampleOnce(now time.Time) {
 	}
 	u, raw, err := fetchUsage(creds.AccessToken)
 	if err != nil {
+		var fe *FetchError
+		if errors.As(err, &fe) && (fe.Status == 401 || fe.Status == 403) {
+			s.stop(now, "Anthropic rejected its Claude login (HTTP "+fmt.Sprint(fe.Status)+"). Log in again on the server to resume.")
+			return
+		}
 		s.mu.Lock()
 		noteFetchError(&s.st, err, now)
 		msg := s.st.LastError
@@ -120,6 +133,12 @@ func (s *Server) sampleOnce(now time.Time) {
 		log.Printf("fetch: %s", msg)
 		return
 	}
+	s.mu.Lock()
+	if !s.stopped.IsZero() {
+		log.Printf("recording resumed")
+	}
+	s.stopped, s.reason = time.Time{}, ""
+	s.mu.Unlock()
 	smp := newSample(u, now)
 	if err := s.appendSample(smp); err != nil {
 		log.Printf("history: %v", err)
@@ -136,6 +155,22 @@ func (s *Server) sampleOnce(now time.Time) {
 	}
 	s.mu.Unlock()
 	log.Printf("sample %s", summarize(u))
+}
+
+// stop records why sampling cannot continue. The loop keeps checking the
+// credentials file on every tick, so replacing it resumes recording.
+func (s *Server) stop(now time.Time, reason string) {
+	s.mu.Lock()
+	first := s.stopped.IsZero()
+	if first {
+		s.stopped = now
+	}
+	s.reason = reason
+	s.st.LastError, s.st.LastErrorAt = reason, now
+	s.mu.Unlock()
+	if first {
+		log.Print(reason)
+	}
 }
 
 func (s *Server) setError(msg string, retryAt time.Time) {
@@ -283,6 +318,7 @@ func (s *Server) now(at time.Time) NowResponse {
 	res := NowResponse{FetchedAt: s.st.FetchedAt, Plan: s.st.Plan, Tier: s.st.Tier, Usage: s.st.Usage, Raw: s.st.Raw, Error: s.st.LastError, Rates: map[string]RateInfo{}, Server: version}
 	res.PlanLabel = Creds{SubscriptionType: s.st.Plan, RateLimitTier: s.st.Tier}.PlanLabel()
 	res.History.Samples, res.History.Since = s.total, s.since
+	res.Recording = Recording{Active: s.stopped.IsZero(), StoppedAt: s.stopped, Reason: s.reason, LastSample: s.st.FetchedAt}
 	res.Verdict = VUnknown.Slug()
 	if s.st.Usage == nil {
 		res.Headline = headline(nil, nil)

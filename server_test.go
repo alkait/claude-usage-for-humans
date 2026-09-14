@@ -143,3 +143,39 @@ func TestServerBacksOffOn429(t *testing.T) {
 }
 
 func fmtFloat(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
+
+func TestServerStopsWhenLoginCannotBeRenewed(t *testing.T) {
+	hits := 0
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++; w.Write([]byte(fakeUsage)) }))
+	defer up.Close()
+	s := newTestServer(t, up.URL)
+	now := time.Now()
+	s.sampleOnce(now) // healthy sample first
+	// now the access token is expired and the refresh token expired yesterday
+	doc := map[string]any{"claudeAiOauth": map[string]any{
+		"accessToken": "dead", "refreshToken": "dead", "expiresAt": now.Add(-time.Hour).UnixMilli(),
+		"refreshTokenExpiresAt": now.Add(-24 * time.Hour).UnixMilli(), "subscriptionType": "max",
+	}}
+	raw, _ := json.Marshal(doc)
+	os.WriteFile(s.opt.credentials, raw, 0o600)
+	s.sampleOnce(now.Add(5 * time.Minute))
+	res := s.now(now.Add(6 * time.Minute))
+	if res.Recording.Active || res.Recording.Reason == "" || res.Recording.StoppedAt.IsZero() {
+		t.Fatalf("recording should be stopped with a reason: %+v", res.Recording)
+	}
+	if res.Recording.Reason != "Its Claude login expired. Log in again on the server to resume." {
+		t.Fatalf("reason should say what happened and what to do: %q", res.Recording.Reason)
+	}
+	if res.Usage == nil || res.Recording.LastSample.IsZero() {
+		t.Fatal("last good numbers must still be served")
+	}
+	if hits != 1 {
+		t.Fatalf("no request should go out with a dead token, upstream saw %d", hits)
+	}
+	// a fresh login file resumes recording on the next tick
+	os.WriteFile(s.opt.credentials, []byte(`{"claudeAiOauth":{"accessToken":"x","refreshToken":"y","expiresAt":`+fmtFloat(float64(now.Add(6*time.Hour).UnixMilli()))+`,"subscriptionType":"max"}}`), 0o600)
+	s.sampleOnce(now.Add(10 * time.Minute))
+	if res := s.now(now.Add(11 * time.Minute)); !res.Recording.Active {
+		t.Fatalf("recording should resume: %+v", res.Recording)
+	}
+}

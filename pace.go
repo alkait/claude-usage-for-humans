@@ -197,6 +197,9 @@ func assess(l Limit, r Rates, now time.Time) Assessment {
 		a.Rate, a.RateSource = rr, "recent"
 	} else if elapsed >= a.Window/20 {
 		a.Rate, a.RateSource = a.Percent/elapsed.Hours(), "average"
+	} else if typ, ok := r.Typical(a.Key); ok && typ > 0 {
+		// a fresh window: assume your usual pace until it has evidence of its own
+		a.Rate, a.RateSource = typ, "usual"
 	}
 
 	if a.Percent >= 100 {
@@ -325,16 +328,24 @@ func headline(b *Assessment, as []Assessment) string {
 		quota, limit, window = "your weekly quota", "your weekly limit", "week"
 	}
 	var s string
-	switch b.Verdict {
-	case VWait:
+	switch {
+	case b.Verdict == VWait:
 		s = fmt.Sprintf("You have hit %s. It resets in %s.", limit, fmtDur(b.ResetIn))
-	case VNoPace:
+	case b.Verdict == VNoPace:
 		s = fmt.Sprintf("The %s just started. Not enough usage yet to judge the pace.", window)
-	case VStop:
+	case b.RateSource == "usual" && b.Verdict == VPush:
+		s = fmt.Sprintf("At your usual pace, %d%% of %s can go unused before it resets in %s.", int(100-b.Projected+0.5), quota, fmtDur(b.ResetIn))
+	case b.RateSource == "usual" && b.Verdict == VHold:
+		s = fmt.Sprintf("At your usual pace you use %s without hitting the limit. It resets in %s.", quota, fmtDur(b.ResetIn))
+	case b.RateSource == "usual" && b.Verdict == VEase:
+		s = fmt.Sprintf("At your usual pace you might hit %s in %s, before it resets in %s.", limit, fmtDur(b.EmptyIn), fmtDur(b.ResetIn))
+	case b.RateSource == "usual" && b.Verdict == VStop:
+		s = fmt.Sprintf("At your usual pace you hit %s in %s and are locked out for %s until it resets.", limit, fmtDur(b.EmptyIn), fmtDur(b.ResetIn-b.EmptyIn))
+	case b.Verdict == VStop:
 		s = fmt.Sprintf("You will hit %s in %s and be locked out for %s until it resets.", limit, fmtDur(b.EmptyIn), fmtDur(b.ResetIn-b.EmptyIn))
-	case VEase:
+	case b.Verdict == VEase:
 		s = fmt.Sprintf("You are moving a little too fast and might hit %s in %s, before it resets in %s.", limit, fmtDur(b.EmptyIn), fmtDur(b.ResetIn))
-	case VHold:
+	case b.Verdict == VHold:
 		s = fmt.Sprintf("You are at the right pace to use %s without hitting the limit. It resets in %s.", quota, fmtDur(b.ResetIn))
 	default:
 		s = fmt.Sprintf("Based on your usage, %d%% of %s can go unused before it resets in %s.", int(100-b.Projected+0.5), quota, fmtDur(b.ResetIn))

@@ -20,6 +20,12 @@ var (
 
 const refreshLeeway = 15 * time.Minute
 
+// AuthError means the stored login cannot be used or renewed. The server
+// stops recording on it and reports the reason.
+type AuthError struct{ Reason string }
+
+func (e *AuthError) Error() string { return e.Reason }
+
 // refreshIfNeeded refreshes the access token when it is within refreshLeeway of
 // expiry, or unconditionally when force is set. It returns the credentials to
 // use and whether a refresh happened. Other keys in the file are preserved.
@@ -38,14 +44,21 @@ func refreshIfNeeded(path string, force bool, now time.Time) (Creds, bool, error
 	}
 	var c Creds
 	json.Unmarshal(doc["claudeAiOauth"], &c)
+	var extra struct {
+		RefreshTokenExpiresAt int64 `json:"refreshTokenExpiresAt"`
+	}
+	json.Unmarshal(doc["claudeAiOauth"], &extra)
 	if c.AccessToken == "" {
-		return Creds{}, false, errors.New("credentials file has no access token")
+		return Creds{}, false, &AuthError{"Its credentials file has no access token"}
 	}
 	if !force && time.UnixMilli(c.ExpiresAt).Sub(now) > refreshLeeway {
 		return c, false, nil
 	}
 	if c.RefreshToken == "" {
-		return c, false, errors.New("token is expiring and there is no refresh token; run `claude` to log in again")
+		return c, false, &AuthError{"Its Claude login expired and has no refresh token"}
+	}
+	if extra.RefreshTokenExpiresAt > 0 && time.UnixMilli(extra.RefreshTokenExpiresAt).Before(now) {
+		return c, false, &AuthError{"Its Claude login expired"}
 	}
 
 	body, _ := json.Marshal(map[string]string{
@@ -62,6 +75,9 @@ func refreshIfNeeded(path string, force bool, now time.Time) (Creds, bool, error
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return c, false, &AuthError{fmt.Sprintf("Anthropic rejected its Claude login (HTTP %d)", resp.StatusCode)}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return c, false, fmt.Errorf("token refresh: HTTP %d: %s", resp.StatusCode, truncate(string(out), 200))
 	}

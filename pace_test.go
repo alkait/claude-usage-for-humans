@@ -164,3 +164,26 @@ func TestShortReason(t *testing.T) {
 		}
 	}
 }
+
+type usualOnly float64
+
+func (u usualOnly) Recent(string, time.Time, time.Duration, time.Time, float64) (float64, bool) {
+	return 0, false
+}
+func (u usualOnly) Typical(string) (float64, bool) { return float64(u), true }
+
+func TestFreshWindowAssumesUsualPace(t *testing.T) {
+	now := time.Now()
+	l := sessionLimit(0, now.Add(sessionWindow-7*time.Minute)) // 7 minutes in, nothing used
+	a := assess(l, usualOnly(12), now)                         // 12%/h is this person's usual burn
+	if a.RateSource != "usual" || a.Verdict != VPush || a.Projected < 55 || a.Projected > 62 {
+		t.Fatalf("source=%q verdict=%s projected=%.0f", a.RateSource, a.Verdict.Word(), a.Projected)
+	}
+	if got := headline(&a, nil); got != "At your usual pace, 41% of your session quota can go unused before it resets in 4h 53m." {
+		t.Fatalf("headline: %q", got)
+	}
+	// without any history the fresh window still says so
+	if a := assess(l, historyRates(nil), now); a.Verdict != VNoPace {
+		t.Fatalf("no history should mean no pace yet, got %s", a.Verdict.Word())
+	}
+}
