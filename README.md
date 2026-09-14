@@ -119,7 +119,8 @@ cuh config remote http://server:8787 --secret <the secret>
 ```
 
 and open `http://server:8787/` in a browser. The dashboard asks for the secret
-once and remembers it. Keep the port on your LAN or behind a VPN or reverse
+once and remembers it. The gear in its header opens settings, where you can
+change the secret the browser sends and test it against the server. Keep the port on your LAN or behind a VPN or reverse
 proxy with TLS; the secret is the only lock on it.
 
 ## The verdict
@@ -164,6 +165,7 @@ no server is configured. `cuh --reset` clears them.
 | `GET /now` | Current usage, plan, per-limit rates, and the computed view: verdict, headline, each limit's assessment, and whether recording is active. What every client uses. |
 | `GET /history?from=&to=` | Samples in a range (RFC3339 or `YYYY-MM-DD`), default the last 7 days. |
 | `GET /history/YYYY-MM.jsonl` | One month of raw samples. |
+| `GET /ping` | `{"ok":true,"secret_required":…}` once the secret is accepted, 401 otherwise. What the dashboard's settings use to test a secret. |
 | `GET /healthz` | `ok`, no auth. |
 
 All but `/` and `/healthz` require `Authorization: Bearer <secret>`.
@@ -180,7 +182,7 @@ cache and a lock against concurrent fetches.
 
 ```sh
 make build      # local binary
-make test       # 21 tests: pace math, verdict thresholds, backoff, token
+make test       # 23 tests: pace math, verdict thresholds, backoff, token
                 # refresh, history storage, server endpoints
 make release    # all six platform binaries into dist/
 make serve      # run the server on the host without a container

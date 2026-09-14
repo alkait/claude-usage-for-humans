@@ -179,3 +179,37 @@ func TestServerStopsWhenLoginCannotBeRenewed(t *testing.T) {
 		t.Fatalf("recording should resume: %+v", res.Recording)
 	}
 }
+
+func TestPingChecksTheSecret(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fakeUsage)) }))
+	defer up.Close()
+	s := newTestServer(t, up.URL)
+	h := s.handler()
+	ping := func(secret string) (int, map[string]any) {
+		req := httptest.NewRequest("GET", "/ping", nil)
+		if secret != "" {
+			req.Header.Set("Authorization", "Bearer "+secret)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var body map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &body)
+		return rec.Code, body
+	}
+	if code, _ := ping(""); code != 401 {
+		t.Fatalf("no secret: %d", code)
+	}
+	if code, _ := ping("wrong"); code != 401 {
+		t.Fatalf("wrong secret: %d", code)
+	}
+	code, body := ping("s3cret")
+	if code != 200 || body["ok"] != true || body["secret_required"] != true {
+		t.Fatalf("right secret: %d %v", code, body)
+	}
+	// an open server accepts anything and says so, so the dashboard can tell the user
+	s.opt.secret = ""
+	code, body = ping("anything")
+	if code != 200 || body["secret_required"] != false {
+		t.Fatalf("open server: %d %v", code, body)
+	}
+}

@@ -293,6 +293,7 @@ func (s *Server) handler() http.Handler {
 		w.Write(page)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
+	mux.HandleFunc("/ping", s.auth(s.handlePing))
 	mux.HandleFunc("/now", s.auth(s.handleNow))
 	mux.HandleFunc("/history", s.auth(s.handleHistory))
 	mux.HandleFunc("/history/", s.auth(s.handleHistoryFile))
@@ -344,6 +345,14 @@ func (s *Server) now(at time.Time) NowResponse {
 		res.Rates[l.Key()] = ri
 	}
 	return res
+}
+
+// handlePing answers only when the caller's secret is accepted, so a client
+// can check its secret without pulling the whole /now payload. It also says
+// whether this server asks for a secret at all.
+func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "secret_required": s.opt.secret != "", "server": version})
 }
 
 func (s *Server) handleNow(w http.ResponseWriter, r *http.Request) {
