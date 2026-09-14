@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Claude usage</title>
+<script>
+  // apply the remembered theme before first paint so there is no flash
+  (() => {
+    let t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('claude-usage-theme') || 'system';
+    if (!['system', 'light', 'dark'].includes(t)) t = 'system';
+    const r = document.documentElement;
+    if (t === 'light' || t === 'dark') r.dataset.theme = t;
+    if (t === 'system' && matchMedia('(prefers-color-scheme: light)').matches) r.classList.add('system-light');
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e1016; --surface: #161923; --surface-2: #1c2030; --hair: #262b3a; --track: #232838;
+    --ink: #e8eaf1; --ink-2: #a3a9bb; --ink-3: #6c7284;
+    --brand: #e8956b; --time: #8a90a3;
+    /* status palette, validated against the dark surface */
+    --good: #2ea043; --track-c: #388bfd; --warn: #bd8419; --crit: #da3633; --none: #6c7284;
+    --glow: 22%;
+    --vc: var(--none);
+    --sans: "Inter", "SF Pro Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  /* light theme: chosen when the switch says light, or when it says system and the OS is light */
+  :root[data-theme="light"], :root:not([data-theme="dark"]).system-light {
+    color-scheme: light;
+    --bg: #f4f5f8; --surface: #ffffff; --surface-2: #ffffff; --hair: #e2e4eb; --track: #e8eaf0;
+    --ink: #1b1f2a; --ink-2: #4b5163; --ink-3: #7b8194;
+    --brand: #d9743f; --time: #6b7186;
+    /* status palette, validated against the light surface */
+    --good: #1a7f37; --track-c: #0969da; --warn: #a87a00; --crit: #b3135f; --none: #7b8194;
+    --glow: 14%;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans);
+    -webkit-font-smoothing: antialiased; padding: 28px 20px 40px;
+    background-image:
+      radial-gradient(900px 420px at 50% -120px, color-mix(in oklab, var(--vc) var(--glow), transparent), transparent 70%);
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  /* header */
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 4px 22px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; }
+  .brand .star { color: var(--brand); font-size: 20px; line-height: 1; }
+  .pill { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--ink-2);
+    border: 1px solid var(--hair); border-radius: 999px; padding: 3px 10px; }
+  .right { display: flex; align-items: center; gap: 14px; color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .seg { display: inline-flex; border: 1px solid var(--hair); border-radius: 999px; padding: 2px; background: var(--surface); }
+  .seg button { font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); background: none; border: 0; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); box-shadow: 0 0 0 1px var(--hair); }
+  :root[data-theme="light"] .seg button[aria-pressed="true"], :root.system-light:not([data-theme="dark"]) .seg button[aria-pressed="true"] { background: var(--bg); }
+
+  /* hero */
+  .hero { text-align: center; padding: 36px 16px 40px; }
+  .hero .word { display: inline-flex; align-items: center; gap: 14px; font-size: 52px; font-weight: 650; letter-spacing: -.02em; line-height: 1.05; color: var(--vc); }
+  .hero .word .e { font-size: 40px; line-height: 1; }
+  .hero p { margin: 14px auto 0; max-width: 640px; font-size: 18px; color: var(--ink); line-height: 1.5; }
+  .hero .note { margin-top: 10px; font-size: 13px; color: var(--ink-3); }
+
+  /* limits */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card { position: relative; background: var(--surface); border: 1px solid var(--hair); border-radius: 18px; padding: 20px 20px 18px;
+    outline: none; transition: border-color .2s, transform .2s; }
+  .card:hover, .card:focus-visible { border-color: color-mix(in oklab, var(--vc) 55%, var(--hair)); transform: translateY(-1px); }
+  .card .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .card .name { font-weight: 650; font-size: 16px; letter-spacing: -.01em; }
+  .card .reset { color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .ring { display: block; width: 190px; height: 190px; margin: 14px auto 6px; }
+  .ring .trk { fill: none; stroke-linecap: butt; }
+  .center { text-align: center; margin-top: -132px; height: 126px; pointer-events: none; }
+  .center .pct { font-size: 34px; font-weight: 650; letter-spacing: -.02em; line-height: 1; }
+  .center .lbl { font-size: 12px; color: var(--ink-3); margin-top: 4px; letter-spacing: .04em; text-transform: uppercase; }
+  .judge { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; font-size: 15px; }
+  .judge i { width: 9px; height: 9px; border-radius: 50%; background: var(--vc); flex: none; }
+  .judge.strong { font-weight: 650; }
+  .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .legend i { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+  .legend .t i { background: var(--time); } .legend .q i { background: var(--vc); } .legend .p { color: var(--ink-3); }
+  .legend b { font-weight: 600; color: var(--ink); }
+
+  /* extra usage */
+  .extra { margin-top: 16px; background: var(--surface); border: 1px solid var(--hair); border-radius: 14px; padding: 14px 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; }
+  .extra .k { font-size: 12px; letter-spacing: .06em; color: var(--ink-3); text-transform: uppercase; font-weight: 600; }
+  .extra .bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .extra .bar i { display: block; height: 100%; background: var(--ink-2); border-radius: 3px; }
+  .extra .v { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 14px; }
+
+  /* footer, table */
+  footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 18px; padding: 0 4px; color: var(--ink-3); font-size: 13px; }
+  .error { margin-top: 14px; color: #f0a0a0; font-size: 13px; text-align: center; }
+
+  /* gate */
+  .gate { max-width: 380px; margin: 60px auto; text-align: center; background: var(--surface); border: 1px solid var(--hair); border-radius: 18px; padding: 28px; }
+  .gate p { color: var(--ink-2); margin: 0 0 14px; }
+  .gate input { font: inherit; width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--hair); border-radius: 10px; padding: 10px 12px; }
+  .gate button { font: inherit; margin-top: 10px; width: 100%; background: var(--ink); color: var(--bg); border: 0; border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer; }
+  .loading #view { opacity: .6; transition: opacity .2s; }
+  [hidden] { display: none !important; }
+  @media (max-width: 560px) { .hero .word { font-size: 40px; } .hero .word .e { font-size: 32px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="star">✱</span><span>Claude usage</span><span class="pill" id="plan" hidden></span></div>
+    <div class="right">
+      <span id="stamp">connecting</span>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme="system">System</button>
+        <button type="button" data-theme="light">Light</button>
+        <button type="button" data-theme="dark">Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="gate" id="gate" hidden>
+    <p>This server asks for its shared secret.</p>
+    <input id="secret" type="password" placeholder="secret" autocomplete="off">
+    <button id="go">Connect</button>
+  </div>
+
+  <main id="view" hidden>
+    <section class="hero">
+      <div class="word"><span class="e" id="emoji"></span><span id="word"></span></div>
+      <p id="headline"></p>
+      <div class="note" id="usual" hidden></div>
+    </section>
+    <section class="grid" id="grid"></section>
+    <section class="extra" id="extra" hidden>
+      <span class="k">Extra usage</span>
+      <div class="bar"><i id="extraBar"></i></div>
+      <span class="v" id="extraText"></span>
+    </section>
+    <div class="error" id="error" hidden></div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const COLOR = { use_more: 'var(--good)', on_track: 'var(--track-c)', slow_down: 'var(--warn)', running_out: 'var(--crit)',
+    wait: 'var(--crit)', no_pace_yet: 'var(--none)', unknown: 'var(--none)' };
+  const EMOJI = { use_more: '🟢', on_track: '🔵', slow_down: '🟡', running_out: '🔴', wait: '⏳', no_pace_yet: '⚪', unknown: '❓' };
+  const WORD = { use_more: 'Use more', on_track: 'On track', slow_down: 'Slow down', running_out: 'Running out',
+    wait: 'Wait', no_pace_yet: 'No pace yet', unknown: 'No data' };
+  let secret = localStorage.getItem('claude-usage-secret') || '';
+  let last = null, lastAt = 0;
+
+  const dur = (s) => {
+    s = Math.max(0, Math.round(s / 60)) * 60;
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    if (d) return `${d}d ${h}h`;
+    if (h) return `${h}h ${String(m).padStart(2, '0')}m`;
+    return `${m}m`;
+  };
+  const ago = (t) => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : dur(s) + ' ago'; };
+  const clock = (iso) => {
+    const t = new Date(Math.round(new Date(iso).getTime() / 60000) * 60000), now = new Date();
+    const hm = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return t.toDateString() === now.toDateString() ? `resets at ${hm}` : `resets ${t.toLocaleDateString([], { weekday: 'short' })} ${hm}`;
+  };
+  const windowOf = (l) => l.group === 'weekly' ? 7 * 86400 : 5 * 3600;
+  const position = (l) => {
+    if (!l.resets_at) return 'no window';
+    const el = windowOf(l) - l.resets_in_seconds;
+    return l.group === 'weekly' ? `day ${Math.min(7, Math.floor(el / 86400) + 1)} of 7` : `${dur(el)} of 5h`;
+  };
+  const judgment = (l) => {
+    if (!l.resets_at) return ['', false];
+    if (l.percent >= 100) return ['used up', true];
+    if (l.empty_in_seconds > 0) return ['runs out in ' + dur(l.empty_in_seconds), true];
+    if (l.projected_at_reset < 0) return ['no pace yet', false];
+    return [(l.group === 'weekly' ? 'on course to end the week at ' : 'on course to end at ') + Math.round(l.projected_at_reset) + '%', false];
+  };
+
+  // ---- rings ----
+  const R_OUT = 82, R_IN = 64, W = 11, C = 95; // radii, stroke, center
+  function arc(r, from, to, color, opacity, dashed) {
+    // from/to are fractions of the circle, clockwise from 12 o'clock
+    const p = document.createElementNS(NS, 'circle');
+    p.setAttribute('cx', C); p.setAttribute('cy', C); p.setAttribute('r', r);
+    p.setAttribute('class', 'trk');
+    p.setAttribute('stroke', color); p.setAttribute('stroke-width', W);
+    if (opacity != null) p.setAttribute('stroke-opacity', opacity);
+    const len = 2 * Math.PI * r;
+    const span = Math.max(0, Math.min(1, to) - Math.max(0, from));
+    p.setAttribute('transform', `rotate(-90 ${C} ${C})`);
+    if (dashed) {
+      // short dashes inside the span only: the dash pattern is clipped by a mask-like second circle
+      const g = document.createElementNS(NS, 'g');
+      const clipId = 'c' + Math.random().toString(36).slice(2, 8);
+      const clip = document.createElementNS(NS, 'clipPath'); clip.setAttribute('id', clipId);
+      const win = document.createElementNS(NS, 'circle');
+      win.setAttribute('cx', C); win.setAttribute('cy', C); win.setAttribute('r', r);
+      win.setAttribute('fill', 'none'); win.setAttribute('stroke', '#000'); win.setAttribute('stroke-width', W + 2);
+      win.setAttribute('stroke-dasharray', `${span * len} ${len}`); win.setAttribute('stroke-dashoffset', -Math.max(0, from) * len);
+      win.setAttribute('transform', `rotate(-90 ${C} ${C})`);
+      clip.appendChild(win); g.appendChild(clip);
+      p.setAttribute('stroke-dasharray', '4 5'); p.setAttribute('stroke-dashoffset', -Math.max(0, from) * len);
+      p.setAttribute('clip-path', `url(#${clipId})`);
+      g.appendChild(p);
+      return g;
+    }
+    p.setAttribute('stroke-dasharray', `${span * len} ${len}`);
+    p.setAttribute('stroke-dashoffset', -Math.max(0, from) * len);
+    return p;
+  }
+  function endDot(r, frac, color) {
+    const a = 2 * Math.PI * Math.min(1, frac) - Math.PI / 2;
+    const d = document.createElementNS(NS, 'circle');
+    d.setAttribute('cx', C + r * Math.cos(a)); d.setAttribute('cy', C + r * Math.sin(a));
+    d.setAttribute('r', W / 2); d.setAttribute('fill', color);
+    return d;
+  }
+  function ring(l, color) {
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 190 190'); svg.setAttribute('class', 'ring'); svg.setAttribute('aria-hidden', 'true');
+    const elapsed = l.elapsed_fraction >= 0 ? l.elapsed_fraction : 0;
+    const used = Math.min(1, l.percent / 100);
+    // tracks: neutral, so "unused" never reads as a tone of the data colour
+    svg.append(arc(R_OUT, 0, 1, 'var(--time)', .16), arc(R_IN, 0, 1, color, .16));
+    // time (outer) and used (inner); the projection lives in the sentence, not on the ring
+    if (elapsed > 0) { svg.append(arc(R_OUT, 0, elapsed, 'var(--time)')); if (elapsed < 1) svg.append(endDot(R_OUT, elapsed, 'var(--time)')); }
+    if (used > 0) { svg.append(arc(R_IN, 0, used, color)); if (used < 1) svg.append(endDot(R_IN, used, color)); }
+    return svg;
+  }
+
+  // ---- render ----
+  function render(d) {
+    const v = d.verdict || 'unknown';
+    document.documentElement.style.setProperty('--vc', COLOR[v]);
+    if (d.plan_label) { $('plan').textContent = d.plan_label; $('plan').hidden = false; } else $('plan').hidden = true;
+    $('emoji').textContent = EMOJI[v]; $('word').textContent = WORD[v];
+    $('headline').textContent = d.headline || 'Could not read your usage.';
+
+    const grid = $('grid'); grid.replaceChildren();
+    for (const l of d.limits || []) {
+      const color = COLOR[l.verdict] || COLOR.unknown;
+      const card = document.createElement('article');
+      card.className = 'card'; card.style.setProperty('--vc', color);
+      const top = document.createElement('div'); top.className = 'top';
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = l.name;
+      const reset = document.createElement('span'); reset.className = 'reset'; reset.textContent = l.resets_at ? clock(l.resets_at) : 'no window';
+      top.append(name, reset);
+      const center = document.createElement('div'); center.className = 'center';
+      const pct = document.createElement('div'); pct.className = 'pct'; pct.textContent = Math.round(l.percent) + '%';
+      const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'used';
+      center.append(pct, lbl);
+      const [jt, strong] = judgment(l);
+      const judge = document.createElement('div'); judge.className = 'judge' + (strong ? ' strong' : '');
+      const dot = document.createElement('i');
+      const jtxt = document.createElement('span'); jtxt.textContent = jt;
+      judge.append(dot, jtxt);
+      const legend = document.createElement('div'); legend.className = 'legend';
+      const t = document.createElement('span'); t.className = 't'; t.append(Object.assign(document.createElement('i')), document.createTextNode('time '));
+      const tb = document.createElement('b'); tb.textContent = position(l); t.appendChild(tb);
+      const q = document.createElement('span'); q.className = 'q'; q.append(document.createElement('i'), document.createTextNode('used '));
+      const qb = document.createElement('b'); qb.textContent = Math.round(l.percent) + '%'; q.appendChild(qb);
+      legend.append(t, q);
+      card.append(top, ring(l, color), center, judge, legend);
+      grid.appendChild(card);
+    }
+
+    const sp = d.spend;
+    if (sp && sp.limit && sp.limit.amount_minor > 0) {
+      const money = (m) => (m.currency === 'USD' ? '$' : m.currency + ' ') + (m.amount_minor / 10 ** m.exponent).toFixed(2);
+      $('extraText').textContent = `${money(sp.used)} of ${money(sp.limit)} · ${sp.enabled ? 'on' : 'off'}`;
+      $('extraBar').style.width = Math.min(100, 100 * sp.used.amount_minor / sp.limit.amount_minor) + '%';
+      $('extra').hidden = false;
+    } else $('extra').hidden = true;
+
+    stamp(d);
+    $('error').hidden = !d.error; $('error').textContent = d.error ? d.error : '';
+  }
+  function stamp(d) {
+    $('stamp').textContent = d.fetched_at ? 'updated ' + ago(new Date(d.fetched_at)) : 'no data yet';
+  }
+
+  async function load() {
+    document.body.classList.add('loading');
+    try {
+      const r = await fetch('/now', { headers: secret ? { Authorization: 'Bearer ' + secret } : {}, cache: 'no-store' });
+      if (r.status === 401) { $('view').hidden = true; $('gate').hidden = false; $('secret').focus(); return; }
+      if (!r.ok) throw new Error('server returned HTTP ' + r.status);
+      last = await r.json(); lastAt = Date.now();
+      $('gate').hidden = true; $('view').hidden = false;
+      render(last);
+    } catch (e) {
+      if (last) { render(last); $('error').hidden = false; $('error').textContent = `server unreachable: ${e.message}; showing numbers from ${ago(lastAt)}`; }
+      else { $('view').hidden = false; render({ error: 'server unreachable: ' + e.message }); }
+    } finally { document.body.classList.remove('loading'); }
+  }
+
+  $('go').onclick = () => { secret = $('secret').value.trim(); localStorage.setItem('claude-usage-secret', secret); load(); };
+  $('secret').onkeydown = (e) => { if (e.key === 'Enter') $('go').onclick(); };
+  // ---- theme: system / light / dark, remembered; ?theme= overrides for app windows ----
+  const mq = matchMedia('(prefers-color-scheme: light)');
+  function applyTheme(t) {
+    const root = document.documentElement;
+    if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
+    root.classList.toggle('system-light', t === 'system' && mq.matches);
+    for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', b.dataset.theme === t);
+  }
+  let theme = new URLSearchParams(location.search).get('theme') || localStorage.getItem('claude-usage-theme') || 'system';
+  if (!['system', 'light', 'dark'].includes(theme)) theme = 'system';
+  applyTheme(theme);
+  mq.addEventListener('change', () => applyTheme(theme));
+  for (const b of document.querySelectorAll('.seg button')) b.onclick = () => { theme = b.dataset.theme; localStorage.setItem('claude-usage-theme', theme); applyTheme(theme); };
+  load();
+  setInterval(load, 30000);
+  setInterval(() => { if (last) stamp(last); }, 10000);
+})();
+</script>
+</body>
+</html>

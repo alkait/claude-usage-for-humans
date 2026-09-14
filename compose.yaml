@@ -1,0 +1,21 @@
+# Local development stack. Copy .env.example to .env first.
+services:
+  claude-usage:
+    build: .
+    image: claude-usage:local
+    container_name: claude-usage
+    restart: unless-stopped
+    # run as your own user so ./data and the credentials file stay yours
+    user: "${UID:-1000}:${GID:-1000}"
+    # bind mounts under SELinux (Fedora, RHEL) are otherwise unreadable to the container
+    security_opt:
+      - label=disable
+    ports:
+      - "${CLAUDE_USAGE_PORT:-8787}:8787"
+    volumes:
+      - ./data:/data
+      # the server refreshes the token in place, so this must be writable
+      - ${CLAUDE_USAGE_CREDENTIALS:-${HOME}/.claude/.credentials.json}:/secrets/credentials.json
+    environment:
+      CLAUDE_USAGE_SECRET: ${CLAUDE_USAGE_SECRET:?set CLAUDE_USAGE_SECRET in .env}
+      CLAUDE_USAGE_INTERVAL: ${CLAUDE_USAGE_INTERVAL:-5m}
