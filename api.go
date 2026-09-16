@@ -100,8 +100,6 @@ type Usage struct {
 // Creds is what we need from Claude Code's stored OAuth credentials.
 type Creds struct {
 	AccessToken      string `json:"accessToken"`
-	RefreshToken     string `json:"refreshToken"`
-	ExpiresAt        int64  `json:"expiresAt"`
 	SubscriptionType string `json:"subscriptionType"`
 	RateLimitTier    string `json:"rateLimitTier"`
 }
@@ -131,16 +129,11 @@ func credentialsPath() string {
 }
 
 // loadCreds reads the token Claude Code keeps on disk, or in the macOS Keychain.
+// It never writes: refreshing is Claude Code's job, and two refreshers would
+// log each other out.
 func loadCreds() (Creds, error) {
-	return loadCredsFrom(credentialsPath())
-}
-
-// loadCredsFrom reads a Claude Code credentials file at an explicit path.
-func loadCredsFrom(path string) (Creds, error) {
-	var raw []byte
-	var err error
-	raw, err = os.ReadFile(path)
-	if err != nil && runtime.GOOS == "darwin" && path == credentialsPath() {
+	raw, err := os.ReadFile(credentialsPath())
+	if err != nil && runtime.GOOS == "darwin" {
 		out, kerr := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials", "-w").Output()
 		if kerr == nil {
 			raw, err = out, nil
@@ -189,7 +182,7 @@ func fetchUsage(token string) (*Usage, json.RawMessage, error) {
 		ra := parseRetryAfter(resp.Header.Get("Retry-After"))
 		return nil, nil, &FetchError{Status: 429, RetryAfter: ra, Msg: "rate limited by Anthropic (HTTP 429)"}
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, nil, &FetchError{Status: resp.StatusCode, Msg: fmt.Sprintf("token rejected (HTTP %d); run `claude` once to refresh it", resp.StatusCode)}
+		return nil, nil, &FetchError{Status: resp.StatusCode, Msg: fmt.Sprintf("token rejected (HTTP %d); open Claude Code once so it refreshes the login", resp.StatusCode)}
 	default:
 		return nil, nil, &FetchError{Status: resp.StatusCode, Msg: fmt.Sprintf("HTTP %d from usage endpoint", resp.StatusCode)}
 	}

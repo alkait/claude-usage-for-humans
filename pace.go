@@ -318,7 +318,7 @@ func binding(as []Assessment) *Assessment {
 // of the current pace, not the projection number.
 func headline(b *Assessment, as []Assessment) string {
 	if b == nil {
-		return "Could not read your usage."
+		return "No samples yet."
 	}
 	quota, limit, window := "your session quota", "your session limit", "session"
 	switch {

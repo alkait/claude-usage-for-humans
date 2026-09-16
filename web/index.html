@@ -247,6 +247,7 @@
   };
 
   // ---- rings ----
+  const STALE_MS = 15 * 60 * 1000;
   const R_OUT = 82, R_IN = 64, W = 11, C = 95; // radii, stroke, center
   function arc(r, from, to, color, opacity, dashed) {
     // from/to are fractions of the circle, clockwise from 12 o'clock
@@ -299,6 +300,7 @@
   }
 
   // ---- render ----
+  const sampledAt = (d) => { const t = d.fetched_at ? new Date(d.fetched_at) : null; return t && t.getFullYear() > 2000 ? t : null; };
   function render(d) {
     const v = d.verdict || 'unknown';
     document.documentElement.style.setProperty('--vc', COLOR[v]);
@@ -353,22 +355,19 @@
     } else $('extra').hidden = true;
 
     stamp(d);
-    const rec = d.recording;
-    if (rec && rec.active === false) {
-      const since = rec.stopped_at ? new Date(rec.stopped_at) : null;
-      let title = 'Server stopped recording' + (since ? ` since ${since.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}` : '');
-      if (rec.last_sample) title += ` · numbers from ${ago(new Date(rec.last_sample))}`;
-      $('bannerTitle').textContent = title;
-      $('bannerText').textContent = rec.reason || '';
+    // numbers come from laptops running Claude Code, so a gap means no laptop
+    // has sampled for a while, or none can (a login that stopped working)
+    const at = sampledAt(d);
+    if (!at || Date.now() - at > STALE_MS) {
+      $('bannerTitle').textContent = at ? `Last sample ${ago(at)}` : 'No samples yet';
+      $('bannerText').textContent = 'Samples come from computers running Claude Code with cuh in the status line. Open Claude Code on one of them; if the warning stays, check that status line for the reason.';
       $('banner').hidden = false;
-      $('error').hidden = true;
-    } else {
-      $('banner').hidden = true;
-      $('error').hidden = !d.error; $('error').textContent = d.error ? d.error : '';
-    }
+    } else $('banner').hidden = true;
+    $('error').hidden = !d.error; $('error').textContent = d.error ? d.error : '';
   }
   function stamp(d) {
-    $('stamp').textContent = d.fetched_at ? 'updated ' + ago(new Date(d.fetched_at)) : 'no data yet';
+    const at = sampledAt(d);
+    $('stamp').textContent = at ? 'updated ' + ago(at) : 'no samples yet';
   }
 
   const authHeaders = (s) => (s ? { Authorization: 'Bearer ' + s } : {});

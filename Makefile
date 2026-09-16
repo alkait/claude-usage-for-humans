@@ -7,7 +7,7 @@ SECRET  ?= $(shell sed -n 's/^CUH_SECRET=//p' .env 2>/dev/null)
 export UID := $(shell id -u)
 export GID := $(shell id -g)
 
-.PHONY: build test release install image up down logs restart sample serve refresh clean
+.PHONY: build test release install image up down logs restart sample serve clean
 
 build:            ## local binary
 	$(GO) build -ldflags="-s -w" -o $(BIN) .
@@ -42,9 +42,6 @@ sample:           ## show what the running server answers on /now
 
 serve: build      ## run the server directly, no container (data in ./data)
 	./$(BIN) serve --data-dir ./data --secret "$(SECRET)"
-
-refresh: build    ## force a token refresh against the real endpoint
-	./$(BIN) auth refresh --force
 
 clean:
 	rm -rf $(BIN) dist

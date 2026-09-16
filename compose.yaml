@@ -1,11 +1,12 @@
-# Local development stack. Copy .env.example to .env first.
+# The server holds no Claude login. It stores the samples your laptops post
+# and serves the dashboard. Copy .env.example to .env first.
 services:
   cuh:
     build: .
     image: cuh:local
     container_name: cuh
     restart: unless-stopped
-    # run as your own user so ./data and the credentials file stay yours
+    # run as your own user so ./data stays yours
     user: "${UID:-1000}:${GID:-1000}"
     # bind mounts under SELinux (Fedora, RHEL) are otherwise unreadable to the container
     security_opt:
@@ -14,8 +15,5 @@ services:
       - "${CUH_PORT:-8787}:8787"
     volumes:
       - ./data:/data
-      # the server refreshes the token in place, so this must be writable
-      - ${CUH_CREDENTIALS:-${HOME}/.claude/.credentials.json}:/secrets/credentials.json
     environment:
       CUH_SECRET: ${CUH_SECRET:?set CUH_SECRET in .env}
-      CUH_INTERVAL: ${CUH_INTERVAL:-5m}

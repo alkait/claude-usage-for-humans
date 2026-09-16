@@ -89,11 +89,8 @@ type View struct {
 	Now      time.Time
 	Width    int
 	Error    string // current problem, if any (numbers shown are cached)
-	Note     string // transient hint, e.g. "refresh throttled"
-	Watch    bool
 	PaintBG  bool
-	Height   int    // terminal rows, 0 if unknown; the panel drops spacer lines to fit
-	Via      string // server host, when the numbers came from one
+	Height   int // terminal rows, 0 if unknown; the panel drops spacer lines to fit
 }
 
 func (s styles) twoCols(left, right string, width int) string {
@@ -320,20 +317,11 @@ func renderPanel(v View) string {
 		if v.Error != "" {
 			stamp += " (cached)"
 		}
-		if v.Via != "" {
-			stamp += " · via " + v.Via
-		}
+		stamp += " · via " + v.State.Via
 	}
-	hint := ""
-	if v.Watch {
-		hint = "r refresh · q quit"
-	}
-	add(s.twoCols(s.dim.Render(stamp), s.dim.Render(hint), inner))
+	add(s.dim.Render(stamp))
 	if v.Error != "" {
 		add(s.red.Width(inner).Render("! " + v.Error))
-	}
-	if v.Note != "" {
-		add(s.dim.Width(inner).Render(v.Note))
 	}
 
 	// Drop spacer lines when the panel would not fit the terminal (border and
@@ -399,10 +387,30 @@ func renderShort(v View) string {
 	if len(tail) > 0 {
 		line += s.dim.Render("  │  " + strings.Join(tail, " "))
 	}
-	if v.Error != "" {
-		line += s.red.Render(" !")
+	if m := v.marker(); m != "" {
+		line += s.red.Render("  ⚠ " + m)
 	}
 	return line
+}
+
+// marker is the short reason the status line should not be trusted blindly:
+// the server is down, the numbers are old, or this machine failed to sample.
+func (v View) marker() string {
+	age := time.Duration(0)
+	if !v.State.FetchedAt.IsZero() {
+		age = v.Now.Sub(v.State.FetchedAt)
+	}
+	switch {
+	case v.State.Offline && age > 0:
+		return "server offline · last update " + fmtAgo(age)
+	case v.State.Offline:
+		return "server offline"
+	case age >= staleAfter:
+		return "last update " + fmtAgo(age)
+	case v.Error != "":
+		return "sampling failed"
+	}
+	return ""
 }
 
 func money(m Money) string {
@@ -418,11 +426,4 @@ func spendOf(st *State) *Spend {
 		return nil
 	}
 	return st.Usage.Spend
-}
-
-func padRight(t string, w int) string {
-	if n := lipgloss.Width(t); n < w {
-		return t + strings.Repeat(" ", w-n)
-	}
-	return t
 }

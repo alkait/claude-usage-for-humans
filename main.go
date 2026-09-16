@@ -11,21 +11,30 @@ import (
 	"golang.org/x/term"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 const (
-	defaultMaxAge  = 3 * time.Minute // serve cached numbers younger than this without a network call
-	manualThrottle = 60 * time.Second
-	baseBackoff    = 5 * time.Minute
-	maxBackoff     = time.Hour
-	watchInterval  = 3 * time.Minute
-	watchRedraw    = time.Second
+	sampleEvery = 5 * time.Minute  // a client samples when the server's numbers are older than this
+	staleAfter  = 15 * time.Minute // and flags them once they are older than this
+	baseBackoff = 5 * time.Minute
+	maxBackoff  = time.Hour
 )
 
 type options struct {
-	short, watch, jsonOut, reset, offline, noColor, noBG, paths, showVersion bool
-	maxAge, interval                                                         time.Duration
-	remote, secret                                                           string
+	short, jsonOut, noColor, noBG, showVersion bool
+	remote, secret                             string
+}
+
+// State is what the renderers show: the server's numbers plus how we got them.
+type State struct {
+	FetchedAt time.Time
+	Plan      string
+	Tier      string
+	Usage     *Usage
+	Raw       json.RawMessage
+	Error     string // current problem, if any; the numbers shown may be cached
+	Offline   bool   // the server did not answer; numbers come from the local cache
+	Via       string // server host
 }
 
 func main() {
@@ -34,30 +43,17 @@ func main() {
 		case "serve":
 			runServe(os.Args[2:])
 			return
-		case "config":
-			runConfig(os.Args[2:])
-			return
-		case "auth":
-			runAuth(os.Args[2:])
-			return
 		}
 	}
-	cfg := loadConfig()
 	var o options
-	flag.StringVar(&o.remote, "remote", cfg.Remote, "read from a cuh server instead of Anthropic")
-	flag.StringVar(&o.secret, "secret", cfg.Secret, "shared secret for --remote")
+	flag.StringVar(&o.remote, "remote", os.Getenv("CUH_REMOTE"), "the cuh server, e.g. http://host:8787")
+	flag.StringVar(&o.secret, "secret", os.Getenv("CUH_SECRET"), "its shared secret")
 	flag.BoolVar(&o.short, "s", false, "one line, for status lines and prompts")
 	flag.BoolVar(&o.short, "short", false, "one line, for status lines and prompts")
-	flag.BoolVar(&o.watch, "watch", false, "live view that refreshes itself (q quits, r refreshes)")
 	flag.BoolVar(&o.jsonOut, "json", false, "machine-readable output")
-	flag.BoolVar(&o.reset, "reset", false, "delete cached state and history")
-	flag.BoolVar(&o.offline, "offline", false, "never touch the network; use cached numbers")
 	flag.BoolVar(&o.noColor, "no-color", false, "plain text")
 	flag.BoolVar(&o.noBG, "no-bg", false, "do not paint the panel background")
-	flag.BoolVar(&o.paths, "paths", false, "print where state and history live")
 	flag.BoolVar(&o.showVersion, "version", false, "print version")
-	flag.DurationVar(&o.maxAge, "max-age", defaultMaxAge, "reuse cached numbers younger than this")
-	flag.DurationVar(&o.interval, "interval", watchInterval, "refresh interval in --watch mode")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -65,84 +61,22 @@ func main() {
 		fmt.Println("cuh", version)
 		return
 	}
-	store, err := openStore()
-	if err != nil {
-		fatal(err)
+	if o.remote == "" {
+		fatal(errors.New("no server given; pass --remote http://host:8787 --secret S"))
 	}
-	if o.paths {
-		fmt.Println(store.statePath())
-		fmt.Println(store.historyPath())
-		fmt.Println(configPath())
-		return
-	}
-	if o.reset {
-		if err := store.Reset(); err != nil {
-			fatal(err)
-		}
-		fmt.Println("cleared", store.Dir)
-		return
-	}
-	if o.interval < time.Minute {
-		o.interval = time.Minute
-	}
-	if o.watch {
-		runWatch(store, o)
-		return
-	}
-	runOnce(store, o)
+	runOnce(o)
 }
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `cuh %s - one verdict for your Claude subscription: use more, on track, slow down, or running out.
 
-usage: cuh [flags]
-       cuh serve  [--listen :8787 --data-dir ./data --interval 5m --secret S --credentials FILE]
-       cuh config show | remote URL [--secret S] | clear
-       cuh auth refresh [--force]
+usage: cuh --remote URL --secret S [-s | --json]
+       cuh serve [--listen :8787 --data-dir ./data --secret S]
+
+flags can also come from CUH_REMOTE and CUH_SECRET.
 
 `, version)
 	flag.PrintDefaults()
-}
-
-// runAuth implements `cuh auth refresh`.
-func runAuth(args []string) {
-	if len(args) == 0 || args[0] != "refresh" {
-		fatal(errors.New("usage: cuh auth refresh [--force] [--credentials FILE]"))
-	}
-	fs := flag.NewFlagSet("auth refresh", flag.ExitOnError)
-	force := fs.Bool("force", false, "refresh even if the token is not close to expiry")
-	path := fs.String("credentials", credentialsPath(), "credentials file")
-	fs.Parse(args[1:])
-	c, did, err := refreshIfNeeded(*path, *force, time.Now())
-	if err != nil {
-		fatal(err)
-	}
-	exp := time.UnixMilli(c.ExpiresAt)
-	if did {
-		fmt.Printf("token refreshed, now valid until %s (%s)\n", exp.Local().Format("Mon 15:04"), fmtDur(time.Until(exp)))
-	} else {
-		fmt.Printf("token still valid until %s (%s), no refresh needed\n", exp.Local().Format("Mon 15:04"), fmtDur(time.Until(exp)))
-	}
-}
-
-// noteFetchError records a failed fetch and decides when the next attempt may happen.
-func noteFetchError(st *State, err error, now time.Time) {
-	var fe *FetchError
-	st.LastError, st.LastErrorAt = err.Error(), now
-	if errors.As(err, &fe) && fe.Status == 429 {
-		st.Backoff++
-		wait := baseBackoff << (st.Backoff - 1)
-		if wait > maxBackoff || st.Backoff > 8 {
-			wait = maxBackoff
-		}
-		if fe.RetryAfter > wait {
-			wait = fe.RetryAfter
-		}
-		st.NextAllowedAt = now.Add(wait)
-		st.LastError = fmt.Sprintf("%s; next try in %s", fe.Msg, fmtDur(wait))
-		return
-	}
-	st.NextAllowedAt = now.Add(2 * time.Minute)
 }
 
 func fatal(err error) {
@@ -150,89 +84,80 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
-// refresh fetches if the cache is stale and the rate-limit backoff allows it.
-// It always returns a usable state; problems are recorded in st.LastError.
-func refresh(store *Store, st *State, maxAge time.Duration, offline, manual bool, now time.Time) (fetched bool, note string) {
-	if offline {
-		return false, ""
-	}
-	age := now.Sub(st.FetchedAt)
-	if st.Usage != nil && age < maxAge && !manual {
-		return false, ""
-	}
-	if manual && st.Usage != nil && age < manualThrottle {
-		return false, fmt.Sprintf("refresh throttled, try again in %ds", int((manualThrottle - age).Seconds()))
-	}
-	if now.Before(st.NextAllowedAt) {
-		if manual {
-			return false, "holding off the API, next try in " + fmtDur(st.NextAllowedAt.Sub(now))
-		}
-		return false, ""
-	}
-	unlock, err := store.TryLock(now)
-	if err != nil {
-		return false, ""
-	}
-	defer unlock()
-
+// sample fetches usage with this machine's Claude Code login and hands it to
+// the server. The login is only read; Claude Code keeps it fresh.
+func sample(remote, secret string) (*NowResponse, error) {
 	creds, err := loadCreds()
 	if err != nil {
-		st.LastError, st.LastErrorAt = err.Error(), now
-		st.NextAllowedAt = now.Add(time.Minute)
-		store.SaveState(st)
-		return false, ""
+		return nil, err
 	}
-	u, raw, err := fetchUsage(creds.AccessToken)
+	_, raw, err := fetchUsage(creds.AccessToken)
 	if err != nil {
-		noteFetchError(st, err, now)
-		store.SaveState(st)
-		return false, ""
+		return nil, err
 	}
-	st.Usage, st.Raw, st.FetchedAt = u, raw, now
-	st.Plan, st.Tier = creds.SubscriptionType, creds.RateLimitTier
-	st.Backoff, st.NextAllowedAt, st.LastError = 0, time.Time{}, ""
-	store.AppendSample(u, now)
-	store.CompactIfNeeded(st, now)
-	store.SaveState(st)
-	return true, ""
+	return postSample(remote, secret, raw, creds)
 }
 
-// acquire returns the state and rates to render. With a server configured the
-// server is the only source: if it does not answer, the last answer it gave is
-// shown as stale, never a direct fetch, so the view stays consistent.
-func acquire(store *Store, o options, now time.Time, manual bool) (*State, Rates, string) {
-	if o.remote != "" {
-		res, err := fetchNow(o.remote, o.secret)
-		if err == nil && res.Usage != nil {
-			st := &State{FetchedAt: res.FetchedAt, Plan: res.Plan, Tier: res.Tier, Usage: res.Usage, Raw: res.Raw, LastError: res.Error, Via: hostOf(o.remote)}
-			store.SaveRemote(remoteCache{Remote: o.remote, ReceivedAt: now, Response: *res})
-			return st, fixedRates(res.Rates), ""
+// noteError records a failed sample and decides when the next attempt may happen.
+func noteError(c *cache, err error, now time.Time) {
+	c.LastError = err.Error()
+	c.NextTry = now.Add(time.Minute)
+	var fe *FetchError
+	if errors.As(err, &fe) && fe.Status == 429 {
+		c.Backoff++
+		wait := baseBackoff << (c.Backoff - 1)
+		if wait > maxBackoff || c.Backoff > 8 {
+			wait = maxBackoff
 		}
-		problem := "server did not answer"
-		if err != nil {
-			problem = "server unreachable: " + shortErr(err)
-		} else if res.Error != "" {
-			problem = "server has no data: " + res.Error
+		if fe.RetryAfter > wait {
+			wait = fe.RetryAfter
 		}
-		if c := store.LoadRemote(); c != nil && c.Remote == o.remote && c.Response.Usage != nil {
-			r := c.Response
-			st := &State{FetchedAt: r.FetchedAt, Plan: r.Plan, Tier: r.Tier, Usage: r.Usage, Raw: r.Raw, Via: hostOf(o.remote)}
-			st.LastError = fmt.Sprintf("%s; showing numbers from %s", problem, fmtAgo(now.Sub(c.ReceivedAt)))
-			return st, fixedRates(r.Rates), ""
-		}
-		return &State{LastError: problem, Via: hostOf(o.remote)}, fixedRates(nil), ""
+		c.NextTry = now.Add(wait)
+		c.LastError = fmt.Sprintf("%s; next try in %s", fe.Msg, fmtDur(wait))
 	}
-	st := store.LoadState()
-	_, note := refresh(store, st, o.maxAge, o.offline, manual, now)
-	return st, historyRates(store.LoadHistory()), note
 }
 
-func buildView(st *State, rates Rates, now time.Time, width int, note string) View {
-	v := View{State: st, Now: now, Width: width, Note: note, Via: st.Via}
+// acquire asks the server for the current view, samples first if the server's
+// numbers are due, and falls back to the cached answer when the server is down.
+func acquire(remote, secret string, now time.Time) (*State, Rates) {
+	c := loadCache()
+	if c.Remote != remote {
+		c = &cache{Remote: remote}
+	}
+	via := hostOf(remote)
+	res, err := fetchNow(remote, secret)
+	if err == nil {
+		if now.Sub(res.FetchedAt) >= sampleEvery && !now.Before(c.NextTry) {
+			if fresh, serr := sample(remote, secret); serr == nil {
+				res = fresh
+				c.Backoff, c.NextTry, c.LastError = 0, time.Time{}, ""
+			} else {
+				noteError(c, serr, now)
+			}
+		}
+		c.ReceivedAt, c.Response = now, *res
+		saveCache(c)
+		st := stateOf(res, via)
+		st.Error = c.LastError
+		return st, fixedRates(res.Rates)
+	}
+	problem := "server unreachable: " + shortErr(err)
+	if c.Response.Usage == nil {
+		return &State{Error: problem, Offline: true, Via: via}, fixedRates(nil)
+	}
+	st := stateOf(&c.Response, via)
+	st.Error = fmt.Sprintf("%s; showing numbers from %s", problem, fmtAgo(now.Sub(c.ReceivedAt)))
+	st.Offline = true
+	return st, fixedRates(c.Response.Rates)
+}
+
+func stateOf(res *NowResponse, via string) *State {
+	return &State{FetchedAt: res.FetchedAt, Plan: res.Plan, Tier: res.Tier, Usage: res.Usage, Raw: res.Raw, Via: via}
+}
+
+func buildView(st *State, rates Rates, now time.Time, width int) View {
+	v := View{State: st, Now: now, Width: width, Error: st.Error}
 	v.Plan = Creds{SubscriptionType: st.Plan, RateLimitTier: st.Tier}.PlanLabel()
-	if st.LastError != "" {
-		v.Error = st.LastError
-	}
 	if st.Usage != nil {
 		v.As = assessAll(st.Usage, rates, now)
 		v.Binding = binding(v.As)
@@ -248,23 +173,15 @@ func termSize() (width, height int) {
 	return 80, 0
 }
 
-func runOnce(store *Store, o options) {
+func runOnce(o options) {
 	now := time.Now()
-	st, rates, note := acquire(store, o, now, false)
-	if st.Usage == nil && (o.jsonOut || o.short || st.Via == "") {
-		msg := st.LastError
-		if msg == "" {
-			msg = "no usage data yet"
-		}
-		fatal(errors.New(msg))
+	st, rates := acquire(o.remote, o.secret, now)
+	if st.Usage == nil && o.jsonOut {
+		fatal(errors.New(st.Error))
 	}
 	w, h := termSize()
-	v := buildView(st, rates, now, w, note)
+	v := buildView(st, rates, now, w)
 	v.PaintBG, v.Height = !o.noBG, h
-	if st.Usage == nil { // server configured but never reached: show the panel with the problem
-		fmt.Println(renderPanel(v))
-		os.Exit(1)
-	}
 	setupColors(o.noColor)
 	switch {
 	case o.jsonOut:
@@ -273,6 +190,9 @@ func runOnce(store *Store, o options) {
 		fmt.Println(renderShort(v))
 	default:
 		fmt.Println(renderPanel(v))
+	}
+	if st.Usage == nil {
+		os.Exit(1)
 	}
 }
 
@@ -317,10 +237,7 @@ func printJSON(v View) {
 		Limits    []limitJSON     `json:"limits"`
 		Spend     *Spend          `json:"spend,omitempty"`
 		Raw       json.RawMessage `json:"raw,omitempty"`
-	}{Headline: v.Headline, Plan: v.Plan, FetchedAt: v.State.FetchedAt, Error: v.Error, Source: "direct", Limits: limitsJSON(v.As), Spend: v.State.Usage.Spend, Raw: v.State.Raw}
-	if v.Via != "" {
-		out.Source = "server " + v.Via
-	}
+	}{Headline: v.Headline, Plan: v.Plan, FetchedAt: v.State.FetchedAt, Error: v.Error, Source: "server " + v.State.Via, Limits: limitsJSON(v.As), Spend: v.State.Usage.Spend, Raw: v.State.Raw}
 	out.Verdict = VUnknown.Slug()
 	if v.Binding != nil {
 		out.Verdict = v.Binding.Verdict.Slug()
@@ -328,101 +245,4 @@ func printJSON(v View) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(out)
-}
-
-// runWatch keeps the summary on screen and refreshes it on a slow, polite cadence.
-func runWatch(store *Store, o options) {
-	setupColors(o.noColor)
-	fd := int(os.Stdin.Fd())
-	raw := term.IsTerminal(fd)
-	var old *term.State
-	if raw {
-		enableVT()
-		s, err := term.MakeRaw(fd)
-		if err == nil {
-			old = s
-		}
-	}
-	fmt.Print("\x1b[?1049h\x1b[?25l")
-	restore := func() {
-		fmt.Print("\x1b[?25h\x1b[?1049l")
-		if old != nil {
-			term.Restore(fd, old)
-		}
-	}
-	defer restore()
-
-	keys := make(chan byte, 8)
-	go func() {
-		buf := make([]byte, 1)
-		for {
-			n, err := os.Stdin.Read(buf)
-			if err != nil {
-				return
-			}
-			if n == 1 {
-				keys <- buf[0]
-			}
-		}
-	}()
-
-	var st *State
-	var rates Rates
-	note := ""
-	noteUntil := time.Time{}
-	poll := 30 * time.Second // how often to re-read the source; caching keeps this cheap
-	var lastPoll time.Time
-	pull := func(now time.Time, manual bool) {
-		wo := o
-		wo.maxAge = o.interval
-		var n string
-		st, rates, n = acquire(store, wo, now, manual)
-		if n != "" {
-			note, noteUntil = n, now.Add(6*time.Second)
-		}
-		lastPoll = now
-	}
-	draw := func(now time.Time) {
-		if now.After(noteUntil) {
-			note = ""
-		}
-		w, h := termSize()
-		v := buildView(st, rates, now, w, note)
-		v.Watch, v.PaintBG, v.Height = true, !o.noBG, h
-		fmt.Print("\x1b[H\x1b[2J" + crlf(renderPanel(v)))
-	}
-	pull(time.Now(), false)
-	draw(time.Now())
-	tick := time.NewTicker(watchRedraw)
-	defer tick.Stop()
-	for {
-		select {
-		case k := <-keys:
-			switch k {
-			case 'q', 'Q', 27, 3:
-				return
-			case 'r', 'R':
-				now := time.Now()
-				pull(now, true)
-				draw(now)
-			}
-		case now := <-tick.C:
-			if now.Sub(lastPoll) >= poll {
-				pull(now, false)
-			}
-			draw(now)
-		}
-	}
-}
-
-// crlf makes multi-line output render correctly while the terminal is in raw mode.
-func crlf(s string) string {
-	var b []byte
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			b = append(b, '\r')
-		}
-		b = append(b, s[i])
-	}
-	return string(b)
 }

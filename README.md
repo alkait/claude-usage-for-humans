@@ -15,113 +15,75 @@ wall mid-task, or they get cautious and leave a third of a paid plan unused.
 ## How it is put together
 
 ```
-   Anthropic usage endpoint
-             ▲  one request every 5 minutes
-             │
-   ┌─────────┴──────────┐        /now (JSON)        ┌──────────────────────┐
-   │  cuh serve │ ◄──────────────────────── │ web dashboard (built  │
-   │  in a container     │                           │ into the server)      │
-   │  keeps history      │ ◄──────────────────────── │ terminal client       │
-   └────────────────────┘                           │ status line, popup    │
-                                                    └──────────────────────┘
+  laptop A: Claude Code ── status line runs `cuh -s` ──┐
+                                                       │  POST /sample every 5 min
+  laptop B: Claude Code ── status line runs `cuh -s` ──┤  GET  /now   every redraw
+                                                       ▼
+                                             ┌──────────────────┐
+                                             │    cuh serve     │  no Claude login
+                                             │  history on disk │  verdict, pace
+                                             │  web dashboard   │
+                                             └──────────────────┘
 ```
 
-- **The server** (`cuh serve`) is the only thing that talks to
-  Anthropic. It samples every 5 minutes, keeps every sample forever as monthly
-  JSONL files, measures your pace from that history, computes the verdict, and
-  serves it all on `/now`. It runs anywhere Docker runs.
-- **The web dashboard** is embedded in the server at `/`.
-- **The terminal client** is the same binary, run without arguments. It reads
-  from the server, never from Anthropic directly once a server is configured.
+- **Every computer you use Claude Code on runs `cuh`.** Claude Code's status
+  line runs `cuh -s` on each redraw. When the server's numbers are more than
+  5 minutes old, that run reads the local Claude Code login, fetches usage from
+  Anthropic, and posts it to the server. Otherwise it just prints the verdict.
+  So sampling happens exactly while you use Claude, on whichever machine you
+  are using, with no daemon and no timer. The login is only read; Claude Code
+  keeps it fresh because you use it.
+- **The server holds no login.** It stores every sample in one JSONL file,
+  stamps them with its own clock, keeps one per minute when two laptops post
+  at once, measures your pace from the whole history, and serves the verdict
+  on `/now` and the dashboard on `/`. Nothing in it ever expires.
 
-## Run it locally
+Usage is account level, so every laptop reports the same truth, and gaps while
+all laptops sleep lose no totals: Anthropic's numbers are cumulative per window.
 
-Prerequisites: Docker with Compose, and Claude Code logged in on this machine
-(the server borrows its login).
+## Set up
+
+**The server**, on any always-on box with Docker (a Raspberry Pi works, the
+image builds there):
 
 ```sh
-cp .env.example .env          # set CUH_SECRET and CUH_CREDENTIALS
-make up                       # build the image, start the container
-open http://localhost:8787/   # the dashboard; enter the secret once
+git clone https://github.com/alkait/claude-usage-for-humans.git && cd claude-usage-for-humans
+cp .env.example .env        # set a long random CUH_SECRET
+docker compose up -d --build
 ```
 
-`make logs` follows the server, `make sample` prints what `/now` answers,
-`make down` stops it. On Fedora and other SELinux systems the Compose file
-already runs the container unconfined so the bind mounts work.
+Without Docker: `make build && ./cuh serve --data-dir ./data --secret S`.
+History lives in `./data`. Back it up if you care about it.
 
-Point the terminal client at it and it stays in sync with the dashboard:
+**Each laptop**, with Claude Code logged in:
 
 ```sh
-make install                                                    # ~/.local/bin/cuh
-cuh config remote http://localhost:8787 --secret <the secret in .env>
-cuh            # the panel
-cuh -s         # one line, for status lines
-cuh --watch    # live, q quits
+make install                                                   # ~/.local/bin/cuh
+cuh --remote http://server:8787 --secret <the secret>          # the panel
 ```
 
-For Claude Code's status line, in `~/.claude/settings.json`:
+And in `~/.claude/settings.json`, the same flags:
 
 ```json
-{ "statusLine": { "type": "command", "command": "cuh -s" } }
+{ "statusLine": { "type": "command", "command": "cuh -s --remote http://server:8787 --secret <the secret>" } }
 ```
 
-Run `make up` as yourself, not with `sudo`: the container runs under your user
-id so the data directory and the credentials file stay yours, and `$HOME`
-changes under sudo. If your shell predates your membership in the `docker`
-group, use `sg docker -c "make up"` or open a new terminal.
+There is no config file. The command carries its settings; `CUH_REMOTE` and
+`CUH_SECRET` work too.
 
-## Deploy to a server
+Open `http://server:8787/` for the dashboard. It asks for the secret once.
+Keep the port on your LAN or tailnet; the secret is the only lock on it.
 
-The server needs three things: the image, a `.env`, and a Claude login of its
-own.
+## When something is off, the status line says so
 
-**1. A login for the server.** Do not copy the credentials file from a machine
-where Claude Code is in use: renewing the token rotates the refresh token and
-would log that machine out. Instead, create a separate login on your laptop
-into its own directory, and give that file to the server:
+| Marker | Meaning |
+|---|---|
+| `⚠ server offline · last update 2h ago` | The server did not answer. The numbers shown are the last it gave. |
+| `⚠ last update 40m ago` | The server answers but nobody has posted a sample for a while. Check this laptop's login: `cuh` shows the full error. |
+| `⚠ sampling failed` | This machine just tried to sample and could not. Usually a login Claude Code has not refreshed yet, or Anthropic rate limiting. |
 
-```sh
-CLAUDE_CONFIG_DIR=~/claude-server-login claude     # then /login inside it
-scp ~/claude-server-login/.credentials.json server:/srv/cuh/credentials.json
-```
-
-Anthropic treats it as another device. The server renews the token itself
-from then on. Refresh tokens do expire eventually (about a month at the time
-of writing); when that happens the dashboard says so and tells you to log in
-again on the server. Repeat the two commands above to resume.
-
-**2. Files on the server.**
-
-```sh
-git clone <this repo> /srv/cuh && cd /srv/cuh
-cp .env.example .env
-```
-
-In `.env` set a long random `CUH_SECRET`, and
-`CUH_CREDENTIALS=/srv/cuh/credentials.json`.
-
-**3. Start it.**
-
-```sh
-docker compose up -d --build
-docker compose logs -f     # expect "sample session N% weekly_all N% ..." every 5 minutes
-```
-
-The image is built on the server from the Dockerfile, so any architecture
-Docker supports works, including a Raspberry Pi. To update: `git pull` and
-`docker compose up -d --build`. History lives in `./data` and survives
-rebuilds; back it up if you care about it.
-
-**4. Point your devices at it.** On each laptop:
-
-```sh
-cuh config remote http://server:8787 --secret <the secret>
-```
-
-and open `http://server:8787/` in a browser. The dashboard asks for the secret
-once and remembers it. The gear in its header opens settings, where you can
-change the secret the browser sends and test it against the server. Keep the port on your LAN or behind a VPN or reverse
-proxy with TLS; the secret is the only lock on it.
+The dashboard shows the same as a banner. Cached numbers are always shown, never
+silently.
 
 ## The verdict
 
@@ -146,47 +108,40 @@ enough history, unusual burn is called out: "2.1× your usual pace".
 
 ## What is stored
 
-One line per sample in `data/history-YYYY-MM.jsonl`: timestamp, every limit's
-percent and reset time, the weekly split by surface (Claude Code, chats,
-Cowork), and extra-usage spend. About 250 bytes each, under 200 KB a month.
-Nothing is deleted. The server keeps 90 days in memory for pace computation
-and reads older months from disk only when asked.
+Server: one line per sample in `data/history.jsonl` with timestamp, every
+limit's percent and reset time, the weekly split by surface, and extra-usage
+spend. About 250 bytes each, so a year of heavy use stays under 10 MB. Nothing
+is deleted. After a restart the server has no current numbers until the next
+laptop posts, which happens on the next status line redraw.
 
-Client-side files (`cuh --paths` prints them): `config.json` with the
-server address and secret, `remote.json` with the last server answer (shown as
-stale if the server stops answering), and a small local cache used only when
-no server is configured. `cuh --reset` clears them.
+Client: one file, `~/.cache/cuh/cache.json`, with the server's last answer
+(shown when the server is down) and the backoff after a failed fetch.
 
 ## Endpoints
 
 | Endpoint | Returns |
 |---|---|
 | `GET /` | The dashboard. No auth; it asks for the secret itself. |
-| `GET /now` | Current usage, plan, per-limit rates, and the computed view: verdict, headline, each limit's assessment, and whether recording is active. What every client uses. |
-| `GET /history?from=&to=` | Samples in a range (RFC3339 or `YYYY-MM-DD`), default the last 7 days. |
-| `GET /history/YYYY-MM.jsonl` | One month of raw samples. |
-| `GET /ping` | `{"ok":true,"secret_required":…}` once the secret is accepted, 401 otherwise. What the dashboard's settings use to test a secret. |
-| `GET /healthz` | `ok`, no auth. |
+| `GET /now` | Current usage, plan, per-limit rates, verdict, headline, each limit's assessment. |
+| `POST /sample` | Takes `{"usage": <Anthropic's response>, "plan": "...", "tier": "..."}`, stores it, answers like `/now`. |
+| `GET /ping` | `{"ok":true,"secret_required":…}` once the secret is accepted. The dashboard uses it to test a secret. |
 
-All but `/` and `/healthz` require `Authorization: Bearer <secret>`.
+All but `/` require `Authorization: Bearer <secret>`.
 
 ## Rate limits
 
-Anthropic's usage endpoint rate-limits aggressive polling. The server makes
-one request per 5 minutes, total, for all your devices. On HTTP 429 it backs
-off exponentially, honours `Retry-After`, and keeps serving the last good
-numbers. A client without a server follows the same rules with a 3-minute
-cache and a lock against concurrent fetches.
+One request to Anthropic per 5 minutes across all your machines, since each
+checks the server's clock before fetching. On HTTP 429 the client backs off
+exponentially, honours `Retry-After`, and the server keeps serving the last
+good numbers.
 
 ## Development
 
 ```sh
 make build      # local binary
-make test       # 23 tests: pace math, verdict thresholds, backoff, token
-                # refresh, history storage, server endpoints
+make test       # pace math, verdict thresholds, client sampling and backoff, server storage
 make release    # all six platform binaries into dist/
-make serve      # run the server on the host without a container
 ```
 
-Go 1.22 or newer. Build-time dependencies are Lip Gloss for the terminal
-panel and golang.org/x/term; the binary is static and needs no runtime.
+Go 1.22 or newer. Dependencies are Lip Gloss for the terminal panel and
+golang.org/x/term; the binary is static and needs no runtime.

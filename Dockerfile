@@ -10,4 +10,4 @@ FROM gcr.io/distroless/static-debian12
 COPY --from=build /cuh /cuh
 VOLUME ["/data"]
 EXPOSE 8787
-ENTRYPOINT ["/cuh", "serve", "--listen", ":8787", "--data-dir", "/data", "--credentials", "/secrets/credentials.json"]
+ENTRYPOINT ["/cuh", "serve", "--listen", ":8787", "--data-dir", "/data"]

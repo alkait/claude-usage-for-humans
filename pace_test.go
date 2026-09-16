@@ -140,7 +140,7 @@ func TestHeadlineWording(t *testing.T) {
 	if got := headline(b, nil); got != "The session just started. Not enough usage yet to judge the pace." {
 		t.Fatalf("no pace: %q", got)
 	}
-	if got := headline(nil, nil); got != "Could not read your usage." {
+	if got := headline(nil, nil); got != "No samples yet." {
 		t.Fatalf("no data: %q", got)
 	}
 	b = &Assessment{Key: "session", Name: "Session", Group: "session", Percent: 34, Projected: 110, Verdict: VEase, Rate: 20, VsUsual: 2.1, ResetIn: 253 * time.Minute, EmptyIn: 125 * time.Minute}
