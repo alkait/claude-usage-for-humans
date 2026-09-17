@@ -26,6 +26,11 @@ $ cuh --remote http://<server>:8787 --secret <secret>
 - **The server** keeps every sample in one `history.jsonl`, works out your pace
   from it, and serves a clear picture of where you stand to every status line.
 
+cuh is for people who use Claude mostly through Claude Code. Chats on
+claude.ai or the phone count toward the same limits, but nothing samples while
+they happen, so the history only catches up at your next Claude Code session.
+Totals stay right; the pace in between goes unseen.
+
 ## Server
 
 Docker, on any always-on box:
