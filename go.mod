@@ -5,7 +5,6 @@ go 1.27
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/muesli/termenv v0.16.0
-	golang.org/x/term v0.36.0
 )
 
 require (

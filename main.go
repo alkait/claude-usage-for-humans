@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"golang.org/x/term"
 )
 
 var version = "0.2.0"
@@ -21,8 +19,8 @@ const (
 )
 
 type options struct {
-	short, jsonOut, noColor, noBG, showVersion bool
-	remote, secret                             string
+	jsonOut, noColor, showVersion bool
+	remote, secret                string
 }
 
 // State is what the renderers show: the server's numbers plus how we got them.
@@ -48,11 +46,8 @@ func main() {
 	var o options
 	flag.StringVar(&o.remote, "remote", os.Getenv("CUH_REMOTE"), "the cuh server, e.g. http://host:8787")
 	flag.StringVar(&o.secret, "secret", os.Getenv("CUH_SECRET"), "its shared secret")
-	flag.BoolVar(&o.short, "s", false, "one line, for status lines and prompts")
-	flag.BoolVar(&o.short, "short", false, "one line, for status lines and prompts")
 	flag.BoolVar(&o.jsonOut, "json", false, "machine-readable output")
 	flag.BoolVar(&o.noColor, "no-color", false, "plain text")
-	flag.BoolVar(&o.noBG, "no-bg", false, "do not paint the panel background")
 	flag.BoolVar(&o.showVersion, "version", false, "print version")
 	flag.Usage = usage
 	flag.Parse()
@@ -70,7 +65,7 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `cuh %s - one verdict for your Claude subscription: use more, on track, slow down, or running out.
 
-usage: cuh --remote URL --secret S [-s | --json]
+usage: cuh --remote URL --secret S [--json]
        cuh serve [--listen :8787 --data-dir ./data --secret S]
 
 flags can also come from CUH_REMOTE and CUH_SECRET.
@@ -155,9 +150,8 @@ func stateOf(res *NowResponse, via string) *State {
 	return &State{FetchedAt: res.FetchedAt, Plan: res.Plan, Tier: res.Tier, Usage: res.Usage, Raw: res.Raw, Via: via}
 }
 
-func buildView(st *State, rates Rates, now time.Time, width int) View {
-	v := View{State: st, Now: now, Width: width, Error: st.Error}
-	v.Plan = Creds{SubscriptionType: st.Plan, RateLimitTier: st.Tier}.PlanLabel()
+func buildView(st *State, rates Rates, now time.Time) View {
+	v := View{State: st, Now: now, Error: st.Error}
 	if st.Usage != nil {
 		v.As = assessAll(st.Usage, rates, now)
 		v.Binding = binding(v.As)
@@ -166,30 +160,20 @@ func buildView(st *State, rates Rates, now time.Time, width int) View {
 	return v
 }
 
-func termSize() (width, height int) {
-	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
-		return w, h
-	}
-	return 80, 0
-}
-
+// runOnce prints the status line, or the JSON view. Cached numbers are shown
+// with a marker; with no numbers at all the exit code says so.
 func runOnce(o options) {
 	now := time.Now()
 	st, rates := acquire(o.remote, o.secret, now)
 	if st.Usage == nil && o.jsonOut {
 		fatal(errors.New(st.Error))
 	}
-	w, h := termSize()
-	v := buildView(st, rates, now, w)
-	v.PaintBG, v.Height = !o.noBG, h
+	v := buildView(st, rates, now)
 	setupColors(o.noColor)
-	switch {
-	case o.jsonOut:
+	if o.jsonOut {
 		printJSON(v)
-	case o.short:
-		fmt.Println(renderShort(v))
-	default:
-		fmt.Println(renderPanel(v))
+	} else {
+		fmt.Println(renderLine(v))
 	}
 	if st.Usage == nil {
 		os.Exit(1)
@@ -237,7 +221,7 @@ func printJSON(v View) {
 		Limits    []limitJSON     `json:"limits"`
 		Spend     *Spend          `json:"spend,omitempty"`
 		Raw       json.RawMessage `json:"raw,omitempty"`
-	}{Headline: v.Headline, Plan: v.Plan, FetchedAt: v.State.FetchedAt, Error: v.Error, Source: "server " + v.State.Via, Limits: limitsJSON(v.As), Spend: v.State.Usage.Spend, Raw: v.State.Raw}
+	}{Headline: v.Headline, Plan: Creds{SubscriptionType: v.State.Plan, RateLimitTier: v.State.Tier}.PlanLabel(), FetchedAt: v.State.FetchedAt, Error: v.Error, Source: "server " + v.State.Via, Limits: limitsJSON(v.As), Spend: v.State.Usage.Spend, Raw: v.State.Raw}
 	out.Verdict = VUnknown.Slug()
 	if v.Binding != nil {
 		out.Verdict = v.Binding.Verdict.Slug()

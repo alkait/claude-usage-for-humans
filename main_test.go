@@ -118,7 +118,7 @@ func TestClientShowsCacheWhenServerIsDown(t *testing.T) {
 	if st.Usage == nil || !st.Offline || st.Error == "" {
 		t.Fatalf("dead server must show cached numbers, flagged: usage=%v offline=%v err=%q", st.Usage != nil, st.Offline, st.Error)
 	}
-	v := buildView(st, fixedRates(nil), now.Add(2*time.Hour), 80)
+	v := buildView(st, fixedRates(nil), now.Add(2*time.Hour))
 	if m := v.marker(); m != "server offline · last update 2h 00m ago" {
 		t.Fatalf("status line marker = %q", m)
 	}
@@ -127,15 +127,15 @@ func TestClientShowsCacheWhenServerIsDown(t *testing.T) {
 func TestMarkerFlagsStaleAndFailedSampling(t *testing.T) {
 	now := time.Now()
 	st := &State{FetchedAt: now.Add(-40 * time.Minute), Usage: &Usage{}}
-	if m := buildView(st, fixedRates(nil), now, 80).marker(); m != "last update 40m ago" {
+	if m := buildView(st, fixedRates(nil), now).marker(); m != "last update 40m ago" {
 		t.Fatalf("stale marker = %q", m)
 	}
 	st = &State{FetchedAt: now.Add(-6 * time.Minute), Usage: &Usage{}, Error: "token rejected"}
-	if m := buildView(st, fixedRates(nil), now, 80).marker(); m != "sampling failed" {
+	if m := buildView(st, fixedRates(nil), now).marker(); m != "sampling failed" {
 		t.Fatalf("failed marker = %q", m)
 	}
 	st = &State{FetchedAt: now.Add(-6 * time.Minute), Usage: &Usage{}}
-	if m := buildView(st, fixedRates(nil), now, 80).marker(); m != "" {
+	if m := buildView(st, fixedRates(nil), now).marker(); m != "" {
 		t.Fatalf("healthy marker = %q", m)
 	}
 }
