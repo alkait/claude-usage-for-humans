@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +23,7 @@ const (
 	dedupeWindow    = time.Minute         // two laptops posting within a minute count once
 )
 
-//go:embed web/index.html
+//go:embed web
 var webFS embed.FS
 
 type serveOptions struct {
@@ -153,9 +154,11 @@ func (s *Server) load(now time.Time) error {
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	page, _ := webFS.ReadFile("web/index.html")
+	static, _ := fs.Sub(webFS, "web")
+	files := http.FileServer(http.FS(static))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
+		if r.URL.Path != "/" { // manifest and icons, so browsers can install the dashboard as an app
+			files.ServeHTTP(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
