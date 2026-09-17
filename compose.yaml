@@ -1,5 +1,5 @@
-# The server holds no Claude login. It stores the samples your laptops post
-# and serves the dashboard. Copy .env.example to .env first.
+# Stores the samples your laptops post and serves the dashboard.
+# Run: CUH_SECRET=<secret> [CUH_PORT=8787] docker compose up -d --build
 services:
   cuh:
     build: .
@@ -16,4 +16,4 @@ services:
     volumes:
       - ./data:/data
     environment:
-      CUH_SECRET: ${CUH_SECRET:?set CUH_SECRET in .env}
+      CUH_SECRET: ${CUH_SECRET:?pass CUH_SECRET=... on the command line}

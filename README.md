@@ -31,11 +31,13 @@ $ cuh --remote http://<server>:8787 --secret <secret>
 Docker, on any always-on box:
 
 ```sh
-cp .env.example .env            # set CUH_SECRET to something long and random
-make up                         # docker compose up -d --build
-make logs                       # one "sample ..." line per post
+CUH_SECRET=<something long and random> make up    # docker compose up -d --build
+make logs                                         # one "sample ..." line per post
 make down
 ```
+
+Add `CUH_PORT=8788` before `make up` to publish on another port. The values
+stick: the container keeps them across restarts and reboots.
 
 Without Docker:
 

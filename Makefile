@@ -2,8 +2,6 @@ BIN     := cuh
 GO      ?= go
 DOCKER  ?= docker
 COMPOSE ?= $(shell $(DOCKER) compose version >/dev/null 2>&1 && echo "$(DOCKER) compose" || echo docker-compose)
-PORT    ?= $(shell sed -n 's/^CUH_PORT=//p' .env 2>/dev/null)
-SECRET  ?= $(shell sed -n 's/^CUH_SECRET=//p' .env 2>/dev/null)
 export UID := $(shell id -u)
 export GID := $(shell id -g)
 
@@ -24,8 +22,7 @@ install: build    ## copy the binary to ~/.local/bin
 image:            ## container image
 	$(DOCKER) build -t cuh:local .
 
-up:               ## build and start the server in a container
-	@test -f .env || { echo "copy .env.example to .env first"; exit 1; }
+up:               ## CUH_SECRET=... [CUH_PORT=8787] make up
 	mkdir -p data
 	$(COMPOSE) up -d --build
 
@@ -38,10 +35,10 @@ logs:             ## follow the server log
 	$(COMPOSE) logs -f
 
 sample:           ## show what the running server answers on /now
-	@curl -fsS -H "Authorization: Bearer $(SECRET)" http://localhost:$(or $(PORT),8787)/now | python3 -m json.tool
+	@curl -fsS -H "Authorization: Bearer $(CUH_SECRET)" http://localhost:$(or $(CUH_PORT),8787)/now | python3 -m json.tool
 
 serve: build      ## run the server directly, no container (data in ./data)
-	./$(BIN) serve --data-dir ./data --secret "$(SECRET)"
+	./$(BIN) serve --listen :$(or $(CUH_PORT),8787) --data-dir ./data --secret "$(CUH_SECRET)"
 
 clean:
 	rm -rf $(BIN) dist
