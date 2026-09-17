@@ -5,7 +5,7 @@ COMPOSE ?= $(shell $(DOCKER) compose version >/dev/null 2>&1 && echo "$(DOCKER) 
 export UID := $(shell id -u)
 export GID := $(shell id -g)
 
-.PHONY: build test release install image up down logs restart sample serve clean
+.PHONY: build test release install image up down restart logs sample serve clean
 
 build:            ## local binary
 	$(GO) build -ldflags="-s -w" -o $(BIN) .
@@ -26,13 +26,14 @@ up:               ## CUH_SECRET=... [CUH_PORT=8787] make up
 	mkdir -p data
 	$(COMPOSE) up -d --build
 
-down:             ## stop the container
-	$(COMPOSE) down
+down:             ## stop and remove the container
+	$(DOCKER) rm -f cuh
 
-restart: down up
+restart:          ## restart the container, keeping its secret and port
+	$(DOCKER) restart cuh
 
 logs:             ## follow the server log
-	$(COMPOSE) logs -f
+	$(DOCKER) logs -f cuh
 
 sample:           ## show what the running server answers on /now
 	@curl -fsS -H "Authorization: Bearer $(CUH_SECRET)" http://localhost:$(or $(CUH_PORT),8787)/now | python3 -m json.tool

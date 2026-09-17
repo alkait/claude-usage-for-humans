@@ -10,13 +10,13 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// Catppuccin Mocha.
+// Mid-tone colours that stay readable on light and dark status bars.
 var (
-	cDim   = lipgloss.Color("#7f849c")
-	cGreen = lipgloss.Color("#a6e3a1")
-	cBlue  = lipgloss.Color("#89b4fa")
-	cPeach = lipgloss.Color("#fab387")
-	cRed   = lipgloss.Color("#f38ba8")
+	cDim   = lipgloss.Color("#7c7f93")
+	cGreen = lipgloss.Color("#40a02b")
+	cBlue  = lipgloss.Color("#1e66f5")
+	cPeach = lipgloss.Color("#fe640b")
+	cRed   = lipgloss.Color("#d20f39")
 )
 
 func verdictColor(v Verdict) lipgloss.Color {
