@@ -1,5 +1,10 @@
 # cuh · Claude usage for humans
 
+## Before you go further
+
+This is for people whose main workflow is Claude Code. If you build mostly on
+claude.ai or in the Claude app, this is not for you.
+
 **Get the most out of your Claude subscription, <ins>*based on how you actually use it*</ins>.**
 
 ![The dashboard: one verdict, then a card per limit with time and usage rings](docs/dashboard.png)
@@ -25,11 +30,6 @@ $ cuh --remote http://<server>:8787 --secret <secret>
   with the local login and posts it to the server.
 - **The server** keeps every sample in one `history.jsonl`, works out your pace
   from it, and serves a clear picture of where you stand to every status line.
-
-cuh is for people who use Claude mostly through Claude Code. Chats on
-claude.ai or the phone count toward the same limits, but nothing samples while
-they happen, so the history only catches up at your next Claude Code session.
-Totals stay right; the pace in between goes unseen.
 
 ## Server
 
